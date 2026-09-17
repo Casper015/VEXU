@@ -1,0 +1,37 @@
+name: VEX CI
+
+on:
+  push:
+    paths:
+      - 'Test_3 Week-3/Testing_3/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'Test_3 Week-3/Testing_3/**'
+      - '.github/workflows/ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: Test_3 Week-3/Testing_3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate project structure
+        run: |
+          test -f makefile
+          test -d src
+          test -d include
+          test -f vex/mkenv.mk
+          test -f vex/mkrules.mk
+
+      - name: Dry-run VEX build
+        run: make -n all
