@@ -28,6 +28,18 @@ int main() {
   // Reset Rotation Sensor position
   Rotation2.resetPosition();
   TestInertial.calibrate();
+  
+  //Create Controller callback events
+  Controller1.ButtonL1.pressed(controller_L1_Pressed);
+  Controller1.ButtonL2.pressed(controller_L2_Pressed);
+  Controller1.ButtonR1.pressed(controller_R1_Pressed);
+  Controller1.ButtonR2.pressed(controller_R2_Pressed);
+  wait(15,msec);
+
+  ArmMotor.setStopping(hold);
+  ClawMotor.setStopping(hold);
+  ArmMotor.setVelocity(60, percent);
+  ClawMotor.setVelocity(30, percent);
 
   wait(1, seconds);
 
@@ -38,11 +50,18 @@ int main() {
     Brain.Screen.clearScreen();
     Brain.Screen.setCursor(1, 1);
 
-    Drivetrain.turn(left, 50, velocityUnits::pct);
-    wait(1, seconds);
-    Drivetrain.stop(coast);
-    Controller1.Screen.print("Int: %.2f Rot: %.2f", 
-    TestInertial.heading(degrees), Rotation2.position(degrees));
+    // Drivetrain.turn(left, 50, velocityUnits::pct);
+    while (true){
+      LeftDriveSmart.setVelocity(Controller1.Axis3.position(), percent);
+      RightDriveSmart.setVelocity(Controller1.Axis2.position(), percent);
+      LeftDriveSmart.spin(forward);
+      RightDriveSmart.spin(forward);
+
+      wait(5, msec);
+      Controller1.Screen.print("Int: %.2f Rot: %.2f", 
+      TestInertial.heading(degrees), Rotation2.position(degrees));
+    }
+
     
 
   // }
