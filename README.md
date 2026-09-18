@@ -14,7 +14,7 @@ This codebase hosts active subsystem proof-of-concepts, controller mappings, sen
 | **`0_Basic-Test/`** | Integrated Prototype | Baseline drive and sensor testing for early prototype iterations. |
 | **`1_Test-Rotation/`** | Sensor Telemetry | V5 Rotation Sensor and Inertial Sensor closed-loop feedback and heading calibration. |
 | **`2_Controller-Test/`** | Operator Interface | Joystick driving algorithms, button-hold polling loops, and auxiliary motor triggers (Arm / Claw). |
-| **`NoteBook/`** | Engineering Notebook | Meeting logs, root-cause setback analyses (Problems & Solutions), and technical evidence. |
+| **`#NoteBook/`** | Engineering Notebook | Meeting logs, root-cause setback analyses (Problems & Solutions), and technical evidence. |
 
 *(Note: VEX Makefiles require project directory names to contain **no whitespace**).*
 
@@ -52,7 +52,7 @@ This codebase hosts active subsystem proof-of-concepts, controller mappings, sen
 #### 1. Fork the Repository
 Click the **`Fork`** button located at the top-right corner of the [Casper015/VEXU](https://github.com/Casper015/VEXU) repository page to create a personal copy under your GitHub account.
 
-![Forking the Repository](NoteBook/pics/01-repo-fork-guide.png)
+![Forking the Repository](%23NoteBook/pics/01-repo-fork-guide.png)
 
 #### 2. Clone Your Fork Locally & Create a Feature Branch
 Clone your personal fork to your workstation, navigate into the repository, and create a descriptive feature branch:
@@ -86,7 +86,7 @@ git push -u origin feat/arcade-drive-deadband
 #### 5. Open a Pull Request (PR)
 Go to your fork on GitHub and click **`Compare & pull request`**. Set the base repository to `Casper015/VEXU` and base branch to `main`. Fill in the PR summary describing what changes were made and how they were tested.
 
-![Pull Request Checks and Merge Info](NoteBook/pics/02-pr-checks-and-ci.png)
+![Pull Request Checks and Merge Info](%23NoteBook/pics/02-pr-checks-and-ci.png)
 
 ---
 
@@ -94,14 +94,14 @@ Go to your fork on GitHub and click **`Compare & pull request`**. Set the base r
 
 Every Pull Request targeting `main` must pass our comprehensive automated verification pipeline before it can be merged:
 
-![GitHub Actions Workflow Pipeline](NoteBook/pics/03-github-actions-workflow.png)
+![GitHub Actions Workflow Pipeline](%23NoteBook/pics/03-github-actions-workflow.png)
 
 | CI Check Gate | Scope & What It Verifies |
 |---|---|
 | **Multi-Project Auto-Discovery** | Dynamically discovers all directories containing a `makefile`. Validates required structure (`src/`, `include/`, `vex/mkenv.mk`, `vex/mkrules.mk`) and runs `make -C <project> -n all`. |
 | **Intra-Project Port Conflict Guard** | Scans all C++ files **within each individual project folder** to ensure no two motors/sensors share the same V5 Smart Port (`PORT1`–`PORT21`). Different projects can independently reuse ports. |
 | **Git Hygiene & File Safety** | Prevents accidental check-ins of compiled binaries (`.bin`, `.elf`, `.o`, `.a`), OS metadata (`.DS_Store`), or oversized files (> 5MB). |
-| **Privacy & Local Path Leak Guard** | Flags any hardcoded developer machine paths (such as `/Users/...` or `C:\Users\...`) to maintain repository privacy. |
+| **Privacy & Local Path Leak Guard** | Flags any hardcoded developer machine paths (such as local user home directories) to maintain repository privacy. |
 | **JSON Configuration Validation** | Validates syntax integrity of all `.vscode/*.json` configuration files across all projects. |
 | **GitHub Copilot Automated Review** | Repository Ruleset automatically triggers AI code reviews on incoming PR commits. |
 

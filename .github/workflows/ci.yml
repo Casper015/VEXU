@@ -64,8 +64,8 @@ jobs:
           import subprocess, re, sys, os
 
           # Guard against committed machine-specific local developer directories
-          # Constructed using character groups to avoid self-matching
-          user_dir_pattern = r"(/(?:U)sers/[^\s\"'`<>]+|[A-Za-z]:[\\/](?:U)sers[\\/][^\s\"'`<>]+)"
+          # Constructed using character groups to avoid self-matching and negative lookahead for documentation examples (...).
+          user_dir_pattern = r"(/(?:U)sers/(?!\.\.\.)[A-Za-z0-9._-]+/[^\s\"'`<>]+|[A-Za-z]:[\\/](?:U)sers[\\/](?!\.\.\.)[A-Za-z0-9._-]+[\\/][^\s\"'`<>]+)"
           path_regex = re.compile(user_dir_pattern)
 
           tracked = subprocess.check_output(["git", "ls-files"]).decode("utf-8").splitlines()
@@ -171,14 +171,15 @@ jobs:
               continue
             fi
             
-            # 2. Dry-run VEX build
-            echo "Running dry-run build: make -C \"$p\" -n all"
-            build_output=$(make -C "$p" -n all 2>&1)
+            # 2. Dry-run VEX build (sanitize project name to avoid whitespace issues in Makefile)
+            proj_name=$(basename "$p" | tr ' ' '_')
+            echo "Running dry-run build: make -C \"$p\" PROJECT=\"$proj_name\" -n all"
+            build_output=$(make -C "$p" PROJECT="$proj_name" -n all 2>&1)
             build_status=$?
             if [ $build_status -ne 0 ]; then
               echo "$build_output"
               err_summary=$(echo "$build_output" | grep -v '^[[:space:]]*$' | tail -n 1)
-              echo "::error file=$p/makefile,title=Build Dry-Run Failed::Dry-run build 'make -C \"$p\" -n all' failed for '$p': $err_summary"
+              echo "::error file=$p/makefile,title=Build Dry-Run Failed::Dry-run build 'make -C \"$p\" PROJECT=\"$proj_name\" -n all' failed for '$p': $err_summary"
               failed=1
               continue
             fi
