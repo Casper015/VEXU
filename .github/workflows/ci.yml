@@ -19,30 +19,119 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check JSON configurations
+      - name: Git Hygiene Check
         shell: bash
         run: |
-          echo "=== Checking JSON files ==="
-          python3 -c '
-          import json, pathlib, sys
-          bad = 0
-          for p in pathlib.Path(".").rglob("*.json"):
-              if any(x.startswith(".") for x in p.parts if x != ".vscode"):
+          echo "=== Checking Git Hygiene ==="
+          python3 - << 'EOF'
+          import subprocess, os, sys
+
+          tracked = subprocess.check_output(["git", "ls-files"]).decode("utf-8").splitlines()
+          errors = []
+
+          for f in tracked:
+              basename = os.path.basename(f)
+              if basename == ".DS_Store" or basename.startswith("._"):
+                  errors.append((f, None, "Git Hygiene: OS Metadata Tracked", f"Tracked OS metadata file found: '{f}'. Run 'git rm --cached \"{f}\"' and add to .gitignore."))
+              elif f.endswith(".bin") or f.endswith(".elf"):
+                  errors.append((f, None, "Git Hygiene: Binary Output Tracked", f"Compiled binary artifact tracked in git: '{f}'. Run 'git rm --cached \"{f}\"' and ignore build outputs in .gitignore."))
+              elif os.path.exists(f):
+                  sz = os.path.getsize(f)
+                  if sz > 5 * 1024 * 1024:
+                      sz_mb = sz / (1024 * 1024)
+                      errors.append((f, None, "Git Hygiene: Large File Tracked", f"File size ({sz_mb:.2f}MB) exceeds 5MB limit: '{f}'. Avoid committing large files or use Git LFS."))
+
+          if errors:
+              print(f"[FAIL] Git hygiene check failed with {len(errors)} violation(s):")
+              for f, line, title, msg in errors:
+                  loc = f"file={f}" if line is None else f"file={f},line={line}"
+                  print(f"::error {loc},title={title}::{msg}")
+                  print(f"  - {f}: {msg}")
+              sys.exit(1)
+          else:
+              print(f"[PASS] Git hygiene check passed ({len(tracked)} tracked files verified).")
+          EOF
+
+      - name: Privacy & Local Path Leak Guard
+        shell: bash
+        run: |
+          echo "=== Checking for Hardcoded Machine Paths ==="
+          python3 - << 'EOF'
+          import subprocess, re, sys, os
+
+          # Guard against committed machine-specific local developer directories
+          # Constructed using character groups to avoid self-matching
+          user_dir_pattern = r"(/(?:U)sers/[^\s\"'`<>]+|[A-Za-z]:[\\/](?:U)sers[\\/][^\s\"'`<>]+)"
+          path_regex = re.compile(user_dir_pattern)
+
+          tracked = subprocess.check_output(["git", "ls-files"]).decode("utf-8").splitlines()
+          violations = []
+
+          for f in tracked:
+              if not os.path.exists(f) or os.path.isdir(f):
                   continue
               try:
-                  json.loads(p.read_text(encoding="utf-8"))
-              except Exception as e:
-                  print(f"::error file={p}::Invalid JSON: {e}")
-                  bad += 1
-          if bad > 0:
-              sys.exit(1)
-          '
-          echo "All JSON files are valid."
+                  with open(f, "r", encoding="utf-8", errors="strict") as fp:
+                      for line_idx, line in enumerate(fp, 1):
+                          if "user_dir_pattern" in line:
+                              continue
+                          m = path_regex.search(line)
+                          if m:
+                              violations.append({
+                                  "file": f,
+                                  "line": line_idx,
+                                  "match": m.group(1),
+                                  "snippet": line.strip()
+                              })
+              except (UnicodeDecodeError, PermissionError):
+                  continue
 
-      - name: Discover and validate all VEX projects
+          if violations:
+              print(f"[FAIL] Privacy & Path Leak Guard failed with {len(violations)} leak(s):")
+              for v in violations:
+                  print(f"::error file={v['file']},line={v['line']},title=Hardcoded Local Path Leak::"
+                        f"Hardcoded user path '{v['match']}' detected. Please replace machine-specific local paths with relative paths or environment variables.")
+                  print(f"  - {v['file']}:{v['line']}: {v['snippet']}")
+              sys.exit(1)
+          else:
+              print("[PASS] Privacy & Path Leak Guard passed (no hardcoded user paths detected).")
+          EOF
+
+      - name: JSON Configuration Validation
         shell: bash
         run: |
-          echo "=== Discovering all VEX projects ==="
+          echo "=== Checking JSON Configuration Files ==="
+          python3 - << 'EOF'
+          import json, pathlib, sys
+
+          json_files = [p for p in pathlib.Path(".").rglob("*.json") if ".git" not in p.parts]
+          failed = 0
+
+          print(f"Scanning {len(json_files)} JSON configuration file(s)...")
+          for p in sorted(json_files):
+              try:
+                  content = p.read_text(encoding="utf-8")
+                  json.loads(content)
+                  print(f"  PASS: {p}")
+              except json.JSONDecodeError as e:
+                  print(f"::error file={p},line={e.lineno},col={e.colno},title=Invalid JSON Syntax::"
+                        f"JSON syntax error in '{p}': {e.msg} at line {e.lineno}, column {e.colno}. Ensure valid JSON syntax.")
+                  failed += 1
+              except Exception as e:
+                  print(f"::error file={p},title=Cannot Read JSON File::Could not read/parse '{p}': {e}")
+                  failed += 1
+
+          if failed > 0:
+              print(f"\n[FAIL] {failed} JSON file(s) failed validation.")
+              sys.exit(1)
+          else:
+              print(f"\n[PASS] All {len(json_files)} JSON configuration files are valid.")
+          EOF
+
+      - name: Discover and Validate All VEX Projects
+        shell: bash
+        run: |
+          echo "=== Discovering All VEX Projects ==="
           projects=()
           while IFS= read -r -d '' mf; do
             pdir=$(dirname "$mf")
@@ -50,7 +139,7 @@ jobs:
           done < <(find . -type f -name "makefile" -not -path "*/.*/*" -print0 | sort -z)
 
           if [ ${#projects[@]} -eq 0 ]; then
-            echo "::error::No VEX projects found with makefile!"
+            echo "::error title=No Projects Found::No VEX projects found containing a makefile!"
             exit 1
           fi
 
@@ -65,8 +154,15 @@ jobs:
             echo "Validating project: $p"
             
             # 1. Directory & files structure check
-            if [ ! -d "$p/src" ] || [ ! -d "$p/include" ] || [ ! -f "$p/vex/mkenv.mk" ] || [ ! -f "$p/vex/mkrules.mk" ]; then
-              echo "::error file=$p::Project structure validation failed for $p (missing src, include, or vex/mk*)"
+            missing=()
+            [ ! -d "$p/src" ] && missing+=("src/ directory")
+            [ ! -d "$p/include" ] && missing+=("include/ directory")
+            [ ! -f "$p/vex/mkenv.mk" ] && missing+=("vex/mkenv.mk")
+            [ ! -f "$p/vex/mkrules.mk" ] && missing+=("vex/mkrules.mk")
+
+            if [ ${#missing[@]} -ne 0 ]; then
+              missing_list=$(IFS=", "; echo "${missing[*]}")
+              echo "::error file=$p/makefile,title=Missing Project Structure::Project '$p' is missing required components: $missing_list. VEX projects must contain src/, include/, vex/mkenv.mk, and vex/mkrules.mk."
               failed=1
               continue
             fi
@@ -74,7 +170,7 @@ jobs:
             # 2. Dry-run VEX build
             echo "Running dry-run build: make -C \"$p\" -n all"
             if ! make -C "$p" -n all > /dev/null; then
-              echo "::error file=$p::Build dry-run failed for $p"
+              echo "::error file=$p/makefile,title=Build Dry-Run Failed::Dry-run build 'make -C \"$p\" -n all' failed for '$p'. Check makefile syntax, targets, and source references."
               failed=1
               continue
             fi
@@ -83,9 +179,172 @@ jobs:
           done
 
           if [ $failed -ne 0 ]; then
-            echo "One or more projects failed validation."
+            echo "[FAIL] One or more VEX projects failed validation."
             exit 1
           fi
 
-          echo "All ${#projects[@]} projects validated successfully!"
+          echo "All ${#projects[@]} VEX projects validated successfully!"
 
+      - name: Hardware Port Conflict Check (Intra-Project Only)
+        shell: bash
+        run: |
+          python3 - << 'EOF'
+          import collections
+          import os
+          import pathlib
+          import re
+          import sys
+
+          def strip_comments_and_strings(source: str) -> str:
+              result = []
+              i = 0
+              n = len(source)
+              state = "code"
+              while i < n:
+                  c = source[i]
+                  next_c = source[i + 1] if i + 1 < n else ""
+                  if state == "code":
+                      if c == "/" and next_c == "/":
+                          state = "line_comment"
+                          result.append("  ")
+                          i += 2
+                      elif c == "/" and next_c == "*":
+                          state = "block_comment"
+                          result.append("  ")
+                          i += 2
+                      elif c == '"':
+                          state = "string"
+                          result.append(" ")
+                          i += 1
+                      elif c == "'":
+                          state = "char"
+                          result.append(" ")
+                          i += 1
+                      else:
+                          result.append(c)
+                          i += 1
+                  elif state == "line_comment":
+                      if c == "\n":
+                          state = "code"
+                          result.append("\n")
+                      else:
+                          result.append(" ")
+                      i += 1
+                  elif state == "block_comment":
+                      if c == "*" and next_c == "/":
+                          state = "code"
+                          result.append("  ")
+                          i += 2
+                      elif c == "\n":
+                          result.append("\n")
+                          i += 1
+                      else:
+                          result.append(" ")
+                          i += 1
+                  elif state == "string":
+                      if c == "\\":
+                          result.append("  ")
+                          i += 2
+                      elif c == '"':
+                          state = "code"
+                          result.append(" ")
+                          i += 1
+                      elif c == "\n":
+                          result.append("\n")
+                          i += 1
+                      else:
+                          result.append(" ")
+                          i += 1
+                  elif state == "char":
+                      if c == "\\":
+                          result.append("  ")
+                          i += 2
+                      elif c == "'":
+                          state = "code"
+                          result.append(" ")
+                          i += 1
+                      elif c == "\n":
+                          result.append("\n")
+                          i += 1
+                      else:
+                          result.append(" ")
+                          i += 1
+              return "".join(result)
+
+          port_pattern = re.compile(r"\b(?:vex::)?PORT([1-9]|1[0-9]|2[0-1])\b")
+
+          # Discover all project roots (directories containing makefile)
+          projects = []
+          for mf in pathlib.Path(".").rglob("makefile"):
+              if any(p.startswith(".") for p in mf.parts[:-1]):
+                  continue
+              projects.append(mf.parent)
+
+          projects.sort()
+          print(f"=== Hardware Port Conflict Check (Intra-Project Only) ===")
+          print(f"Found {len(projects)} independent project(s). Verifying each project separately...\n")
+
+          has_any_conflict = False
+
+          for proj in projects:
+              print("----------------------------------------------------")
+              print(f"Project: '{proj}'")
+              ports = collections.defaultdict(list)
+              c_files = []
+              for ext in ("*.cpp", "*.c", "*.cc", "*.cxx", "*.h", "*.hpp"):
+                  for f in proj.rglob(ext):
+                      if any(p.startswith(".") for p in f.parts):
+                          continue
+                      c_files.append(f)
+              
+              for f in sorted(c_files):
+                  try:
+                      original_content = f.read_text(encoding="utf-8", errors="ignore")
+                  except Exception as e:
+                      print(f"Warning: could not read {f}: {e}")
+                      continue
+                  original_lines = original_content.splitlines()
+                  cleaned_content = strip_comments_and_strings(original_content)
+                  for line_idx, clean_line in enumerate(cleaned_content.splitlines()):
+                      for m in port_pattern.finditer(clean_line):
+                          port_num = int(m.group(1))
+                          raw_line = original_lines[line_idx].strip() if line_idx < len(original_lines) else ""
+                          ports[port_num].append({
+                              "file": str(f),
+                              "line": line_idx + 1,
+                              "code": raw_line
+                          })
+              
+              proj_conflicts = {p: usages for p, usages in ports.items() if len(usages) > 1}
+              if proj_conflicts:
+                  has_any_conflict = True
+                  print(f"\n[ERROR] Smart Port conflict detected in project '{proj}':")
+                  for p_num, usages in sorted(proj_conflicts.items()):
+                      all_locs = ", ".join([f"{u['file']}:{u['line']}" for u in usages])
+                      for u in usages:
+                          print(f"::error file={u['file']},line={u['line']},title=Hardware Port Conflict Detected::"
+                                f"Smart Port PORT{p_num} is assigned multiple times within project '{proj}'. "
+                                f"Conflicting locations: {all_locs}. Each V5 Smart Port must be dedicated to a single device.")
+                      print(f"  Conflict for PORT{p_num} ({len(usages)} assignments):")
+                      for u in usages:
+                          print(f"    - {u['file']}:{u['line']}: {u['code']}")
+                      print("  Troubleshooting Guidance: V5 Brain Smart Ports cannot be shared by multiple motors or sensors. "
+                            "Please assign each conflicting device to a distinct unused Smart Port (PORT1 - PORT21).\n")
+              else:
+                  assigned = sorted(ports.keys())
+                  if assigned:
+                      port_desc = ", ".join([f"PORT{p}" for p in assigned])
+                      print(f"PASS: {len(assigned)} port(s) configured ({port_desc}). No intra-project conflicts.")
+                      for p_num in assigned:
+                          for u in ports[p_num]:
+                              print(f"  - PORT{p_num}: {u['file']}:{u['line']} -> {u['code']}")
+                  else:
+                      print("PASS: No VEX Smart Ports configured.")
+
+          print("----------------------------------------------------")
+          if has_any_conflict:
+              print("\n[FAILED] One or more projects contain hardware port conflicts.")
+              sys.exit(1)
+          else:
+              print("\n[SUCCESS] All projects passed hardware port conflict checks.")
+          EOF
