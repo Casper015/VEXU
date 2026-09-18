@@ -35,5 +35,27 @@ rotation Rotation2 = rotation(PORT18, false);
  * This should be called at the start of your int main function.
  */
 void vexcodeInit( void ) {
-  // nothing to initialize
+  //reset devices and calibrate sensors
+  Rotation2.resetPosition();
+  TestInertial.resetRotation();
+  TestInertial.calibrate();
+  wait(30,msec);
+
+  //setup the controller screen
+  controller_screen();
+  
+  //setup the button
+  Controller1.ButtonL1.pressed(controller_L1_Pressed);
+  Controller1.ButtonL2.pressed(controller_L2_Pressed);
+  Controller1.ButtonR1.pressed(controller_R1_Pressed);
+  Controller1.ButtonR2.pressed(controller_R2_Pressed);
+
+  //setup the speed of motors
+  ArmMotor.setStopping(hold);
+  ClawMotor.setStopping(hold);
+  ArmMotor.setVelocity(60, percent);
+  ClawMotor.setVelocity(30, percent);
+
+  //add a delay to allow the inertial sensor to calibrate
+  wait(30,msec);
 }
