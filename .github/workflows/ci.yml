@@ -2,36 +2,90 @@ name: VEX CI
 
 on:
   push:
-    paths:
-      - 'Test_3 Week-3/Testing_3/**'
-      - '.github/workflows/ci.yml'
+    branches: [ main ]
   pull_request:
-    paths:
-      - 'Test_3 Week-3/Testing_3/**'
-      - '.github/workflows/ci.yml'
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   validate:
+    name: Validate All VEX Projects
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: Test_3 Week-3/Testing_3
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate project structure
+      - name: Check JSON configurations
+        shell: bash
         run: |
-          test -f makefile
-          test -d src
-          test -d include
-          test -f vex/mkenv.mk
-          test -f vex/mkrules.mk
+          echo "=== Checking JSON files ==="
+          python3 -c '
+          import json, pathlib, sys
+          bad = 0
+          for p in pathlib.Path(".").rglob("*.json"):
+              if any(x.startswith(".") for x in p.parts if x != ".vscode"):
+                  continue
+              try:
+                  json.loads(p.read_text(encoding="utf-8"))
+              except Exception as e:
+                  print(f"::error file={p}::Invalid JSON: {e}")
+                  bad += 1
+          if bad > 0:
+              sys.exit(1)
+          '
+          echo "All JSON files are valid."
 
-      - name: Dry-run VEX build
-        run: make -n all
+      - name: Discover and validate all VEX projects
+        shell: bash
+        run: |
+          echo "=== Discovering all VEX projects ==="
+          projects=()
+          while IFS= read -r -d '' mf; do
+            pdir=$(dirname "$mf")
+            projects+=("$pdir")
+          done < <(find . -type f -name "makefile" -not -path "*/.*/*" -print0 | sort -z)
+
+          if [ ${#projects[@]} -eq 0 ]; then
+            echo "::error::No VEX projects found with makefile!"
+            exit 1
+          fi
+
+          echo "Found ${#projects[@]} project(s):"
+          for p in "${projects[@]}"; do
+            echo "  - $p"
+          done
+
+          failed=0
+          for p in "${projects[@]}"; do
+            echo "----------------------------------------------------"
+            echo "Validating project: $p"
+            
+            # 1. Directory & files structure check
+            if [ ! -d "$p/src" ] || [ ! -d "$p/include" ] || [ ! -f "$p/vex/mkenv.mk" ] || [ ! -f "$p/vex/mkrules.mk" ]; then
+              echo "::error file=$p::Project structure validation failed for $p (missing src, include, or vex/mk*)"
+              failed=1
+              continue
+            fi
+            
+            # 2. Dry-run VEX build
+            echo "Running dry-run build: make -C \"$p\" -n all"
+            if ! make -C "$p" -n all > /dev/null; then
+              echo "::error file=$p::Build dry-run failed for $p"
+              failed=1
+              continue
+            fi
+            
+            echo "PASS: $p"
+          done
+
+          if [ $failed -ne 0 ]; then
+            echo "One or more projects failed validation."
+            exit 1
+          fi
+
+          echo "All ${#projects[@]} projects validated successfully!"
+
