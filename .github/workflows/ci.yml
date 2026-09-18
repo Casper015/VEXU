@@ -2,36 +2,502 @@ name: VEX CI
 
 on:
   push:
-    paths:
-      - 'Test_3 Week-3/Testing_3/**'
-      - '.github/workflows/ci.yml'
+    branches: [ main ]
   pull_request:
-    paths:
-      - 'Test_3 Week-3/Testing_3/**'
-      - '.github/workflows/ci.yml'
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   validate:
+    name: Validate All VEX Projects
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: Test_3 Week-3/Testing_3
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate project structure
+      - name: Git Hygiene Check
+        shell: bash
         run: |
-          test -f makefile
-          test -d src
-          test -d include
-          test -f vex/mkenv.mk
-          test -f vex/mkrules.mk
+          echo "=== Checking Git Hygiene ==="
+          python3 - << 'EOF'
+          import subprocess, os, sys
 
-      - name: Dry-run VEX build
-        run: make -n all
+          tracked = subprocess.check_output(["git", "ls-files"]).decode("utf-8").splitlines()
+          errors = []
+
+          FORBIDDEN_EXTENSIONS = (
+              ".bin", ".elf", ".o", ".d", ".map", ".a", ".so", ".dylib"
+          )
+
+          for f in tracked:
+              basename = os.path.basename(f)
+              if basename == ".DS_Store" or basename.startswith("._"):
+                  errors.append((f, None, "Git Hygiene: OS Metadata Tracked", f"Tracked OS metadata file found: '{f}'. Run 'git rm --cached \"{f}\"' and add to .gitignore."))
+              elif f.endswith(FORBIDDEN_EXTENSIONS):
+                  errors.append((f, None, "Git Hygiene: Binary/Build Output Tracked", f"Compiled binary or build artifact tracked in git: '{f}'. Run 'git rm --cached \"{f}\"' and ignore build outputs in .gitignore."))
+              elif os.path.exists(f):
+                  sz = os.path.getsize(f)
+                  if sz > 5 * 1024 * 1024:
+                      sz_mb = sz / (1024 * 1024)
+                      errors.append((f, None, "Git Hygiene: Large File Tracked", f"File size ({sz_mb:.2f}MB) exceeds 5MB limit: '{f}'. Avoid committing large files or use Git LFS."))
+
+          if errors:
+              print(f"[FAIL] Git hygiene check failed with {len(errors)} violation(s):")
+              for f, line, title, msg in errors:
+                  loc = f"file={f}" if line is None else f"file={f},line={line}"
+                  print(f"::error {loc},title={title}::{msg}")
+                  print(f"  - {f}: {msg}")
+              sys.exit(1)
+          else:
+              print(f"[PASS] Git hygiene check passed ({len(tracked)} tracked files verified).")
+          EOF
+
+      - name: Privacy & Local Path Leak Guard
+        shell: bash
+        run: |
+          echo "=== Checking for Hardcoded Machine Paths ==="
+          python3 - << 'EOF'
+          import subprocess, re, sys, os
+
+          # Guard against committed machine-specific local developer directories
+          # Constructed using character groups to avoid self-matching
+          user_dir_pattern = r"(/(?:U)sers/[^\s\"'`<>]+|[A-Za-z]:[\\/](?:U)sers[\\/][^\s\"'`<>]+)"
+          path_regex = re.compile(user_dir_pattern)
+
+          tracked = subprocess.check_output(["git", "ls-files"]).decode("utf-8").splitlines()
+          violations = []
+
+          for f in tracked:
+              if f == ".github/workflows/ci.yml" or not os.path.exists(f) or os.path.isdir(f):
+                  continue
+              try:
+                  with open(f, "r", encoding="utf-8", errors="strict") as fp:
+                      for line_idx, line in enumerate(fp, 1):
+                          m = path_regex.search(line)
+                          if m:
+                              violations.append({
+                                  "file": f,
+                                  "line": line_idx,
+                                  "match": m.group(1),
+                                  "snippet": line.strip()
+                              })
+              except (UnicodeDecodeError, PermissionError):
+                  continue
+
+          if violations:
+              print(f"[FAIL] Privacy & Path Leak Guard failed with {len(violations)} leak(s):")
+              for v in violations:
+                  print(f"::error file={v['file']},line={v['line']},title=Hardcoded Local Path Leak::"
+                        f"Hardcoded user path '{v['match']}' detected. Please replace machine-specific local paths with relative paths or environment variables.")
+                  print(f"  - {v['file']}:{v['line']}: {v['snippet']}")
+              sys.exit(1)
+          else:
+              print("[PASS] Privacy & Path Leak Guard passed (no hardcoded user paths detected).")
+          EOF
+
+      - name: JSON Configuration Validation
+        shell: bash
+        run: |
+          echo "=== Checking JSON Configuration Files ==="
+          python3 - << 'EOF'
+          import json, pathlib, sys
+
+          json_files = [p for p in pathlib.Path(".").rglob("*.json") if ".git" not in p.parts and "build" not in p.parts]
+          failed = 0
+
+          print(f"Scanning {len(json_files)} JSON configuration file(s)...")
+          for p in sorted(json_files):
+              posix_p = p.as_posix()
+              try:
+                  content = p.read_text(encoding="utf-8")
+                  json.loads(content)
+                  print(f"  PASS: {posix_p}")
+              except json.JSONDecodeError as e:
+                  print(f"::error file={posix_p},line={e.lineno},col={e.colno},title=Invalid JSON Syntax::"
+                        f"JSON syntax error in '{posix_p}': {e.msg} at line {e.lineno}, column {e.colno}. Ensure valid JSON syntax.")
+                  failed += 1
+              except Exception as e:
+                  print(f"::error file={posix_p},title=Cannot Read JSON File::Could not read/parse '{posix_p}': {e}")
+                  failed += 1
+
+          if failed > 0:
+              print(f"\n[FAIL] {failed} JSON file(s) failed validation.")
+              sys.exit(1)
+          else:
+              print(f"\n[PASS] All {len(json_files)} JSON configuration files are valid.")
+          EOF
+
+      - name: Discover and Validate All VEX Projects
+        shell: bash
+        run: |
+          echo "=== Discovering All VEX Projects ==="
+          projects=()
+          while IFS= read -r -d '' mf; do
+            pdir=$(dirname "$mf")
+            pdir="${pdir#./}"
+            projects+=("$pdir")
+          done < <(find . -type f \( -name "makefile" -o -name "Makefile" \) -not -path "*/.*/*" -print0 | sort -z)
+
+          if [ ${#projects[@]} -eq 0 ]; then
+            echo "::error title=No Projects Found::No VEX projects found containing a makefile!"
+            exit 1
+          fi
+
+          echo "Found ${#projects[@]} project(s):"
+          for p in "${projects[@]}"; do
+            echo "  - $p"
+          done
+
+          failed=0
+          for p in "${projects[@]}"; do
+            echo "----------------------------------------------------"
+            echo "Validating project: $p"
+            
+            # 1. Directory & files structure check
+            missing=()
+            [ ! -d "$p/src" ] && missing+=("src/ directory")
+            [ ! -d "$p/include" ] && missing+=("include/ directory")
+            [ ! -f "$p/vex/mkenv.mk" ] && missing+=("vex/mkenv.mk")
+            [ ! -f "$p/vex/mkrules.mk" ] && missing+=("vex/mkrules.mk")
+
+            if [ ${#missing[@]} -ne 0 ]; then
+              missing_list=$(IFS=", "; echo "${missing[*]}")
+              echo "::error file=$p/makefile,title=Missing Project Structure::Project '$p' is missing required components: $missing_list. VEX projects must contain src/, include/, vex/mkenv.mk, and vex/mkrules.mk."
+              failed=1
+              continue
+            fi
+            
+            # 2. Dry-run VEX build
+            echo "Running dry-run build: make -C \"$p\" -n all"
+            build_output=$(make -C "$p" -n all 2>&1)
+            build_status=$?
+            if [ $build_status -ne 0 ]; then
+              echo "$build_output"
+              err_summary=$(echo "$build_output" | grep -v '^[[:space:]]*$' | tail -n 1)
+              echo "::error file=$p/makefile,title=Build Dry-Run Failed::Dry-run build 'make -C \"$p\" -n all' failed for '$p': $err_summary"
+              failed=1
+              continue
+            fi
+            
+            echo "PASS: $p"
+          done
+
+          if [ $failed -ne 0 ]; then
+            echo "[FAIL] One or more VEX projects failed validation."
+            exit 1
+          fi
+
+          echo "All ${#projects[@]} VEX projects validated successfully!"
+
+      - name: Hardware Port Conflict Check (Intra-Project Only)
+        shell: bash
+        run: |
+          python3 - << 'EOF'
+          import collections
+          import os
+          import pathlib
+          import re
+          import sys
+
+          def strip_comments_and_strings(source: str) -> str:
+              result = []
+              i = 0
+              n = len(source)
+              state = "code"
+              while i < n:
+                  c = source[i]
+                  next_c = source[i + 1] if i + 1 < n else ""
+                  if state == "code":
+                      if c == "/" and next_c == "/":
+                          state = "line_comment"
+                          result.append("  ")
+                          i += 2
+                      elif c == "/" and next_c == "*":
+                          state = "block_comment"
+                          result.append("  ")
+                          i += 2
+                      elif c == '"':
+                          state = "string"
+                          result.append(" ")
+                          i += 1
+                      elif c == "'":
+                          state = "char"
+                          result.append(" ")
+                          i += 1
+                      else:
+                          result.append(c)
+                          i += 1
+                  elif state == "line_comment":
+                      if c == "\n":
+                          state = "code"
+                          result.append("\n")
+                      else:
+                          result.append(" ")
+                      i += 1
+                  elif state == "block_comment":
+                      if c == "*" and next_c == "/":
+                          state = "code"
+                          result.append("  ")
+                          i += 2
+                      elif c == "\n":
+                          result.append("\n")
+                          i += 1
+                      else:
+                          result.append(" ")
+                          i += 1
+                  elif state == "string":
+                      if c == "\\":
+                          result.append("  ")
+                          i += 2
+                      elif c == '"':
+                          state = "code"
+                          result.append(" ")
+                          i += 1
+                      elif c == "\n":
+                          result.append("\n")
+                          i += 1
+                      else:
+                          result.append(" ")
+                          i += 1
+                  elif state == "char":
+                      if c == "\\":
+                          result.append("  ")
+                          i += 2
+                      elif c == "'":
+                          state = "code"
+                          result.append(" ")
+                          i += 1
+                      elif c == "\n":
+                          result.append("\n")
+                          i += 1
+                      else:
+                          result.append(" ")
+                          i += 1
+              return "".join(result)
+
+          VEX_DEVICE_TYPES = {
+              "motor", "rotation", "inertial", "optical", "distance",
+              "gps", "vision", "aivision", "ai_vision", "radio",
+              "smart_radio", "link", "serial", "pneumatics", "potentiometerV2",
+              "bumper", "sonar", "rangefinder", "gyro", "accelerometer",
+              "potentiometer", "line", "light", "limit", "encoder",
+              "device", "smartport", "port", "v5_device", "colorsensor"
+          }
+
+          types_re = "|".join(sorted(VEX_DEVICE_TYPES, key=len, reverse=True))
+
+          port_token_re = re.compile(r"\b(?:vex::)?PORT([1-9]|1[0-9]|2[0-1])\b")
+          macro_re = re.compile(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:vex::)?PORT([1-9]|1[0-9]|2[0-1])\b", re.MULTILINE)
+          const_re = re.compile(r"\bconst(?:expr)?\s+(?:auto|int|int32_t|vex::port|port)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:vex::)?PORT([1-9]|1[0-9]|2[0-1])\b")
+
+          decl_re = re.compile(
+              r"\b(?P<decl_type>(?:vex::)?(?:" + types_re + r"))\s+"
+              r"(?P<var_name>[A-Za-z_][A-Za-z0-9_]*)\s*"
+              r"(?:=\s*(?:vex::)?(?:\w+)?\s*)?"
+              r"[\(\{](?P<args>[^\)\};]*)[\)\}]",
+              re.MULTILINE | re.DOTALL
+          )
+
+          rhs_re = re.compile(
+              r"(?:(?P<lhs_var>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*)?"
+              r"(?:new\s+)?"
+              r"\b(?P<ctor_type>(?:vex::)?(?:" + types_re + r"))\s*"
+              r"[\(\{](?P<args>[^\)\};]*)[\)\}]",
+              re.MULTILINE | re.DOTALL
+          )
+
+          mem_re = re.compile(
+              r"(?::|,)\s*(?P<member_name>[A-Za-z_][A-Za-z0-9_]*)\s*[\(\{](?P<args>[^\)\};]*)[\)\}]",
+              re.MULTILINE | re.DOTALL
+          )
+
+          custom_decl_re = re.compile(
+              r"\b(?P<class_name>[A-Za-z_][A-Za-z0-9_]*)\s+"
+              r"(?P<var_name>[A-Za-z_][A-Za-z0-9_]*)\s*"
+              r"[\(\{](?P<args>[^\)\};]*)[\)\}]",
+              re.MULTILINE | re.DOTALL
+          )
+
+          ignored_line_patterns = [
+              re.compile(r"^\s*#"),                                 # Preprocessor directives
+              re.compile(r"\b(?:case|return|sizeof)\b"),            # Keywords
+              re.compile(r"\b(?:if|while|for|switch)\s*\("),        # Control flow
+              re.compile(r"(?:==|!=|<=|>=|<|>)\s*(?:vex::)?PORT"),  # Comparisons
+              re.compile(r"(?:vex::)?PORT[0-9]+\s*(?:==|!=)"),      # Comparisons RHS
+              re.compile(r"\.(?:print|printf|write|read)\s*\("),    # Member display methods
+              re.compile(r"\b(?:printf|puts|wait)\s*\("),           # C runtime functions
+          ]
+
+          def extract_devices(clean_txt, raw_txt, aliases):
+              raw_lines = raw_txt.splitlines()
+              devices = []
+              matched_ranges = []
+
+              def get_port_from_args(args):
+                  pm = port_token_re.search(args)
+                  if pm:
+                      return int(pm.group(1)), pm.group(0)
+                  for a_name, a_port in aliases.items():
+                      if re.search(r"\b" + re.escape(a_name) + r"\b", args):
+                          return a_port, a_name
+                  return None, None
+
+              def add_device(start, end, dev_type, dev_name, args, port_num, port_tok):
+                  for s, e in matched_ranges:
+                      if not (end <= s or start >= e):
+                          return
+                  matched_ranges.append((start, end))
+                  line_num = clean_txt[:start].count("\n") + 1
+                  raw_code = raw_lines[line_num - 1].strip() if line_num <= len(raw_lines) else ""
+                  devices.append({
+                      "line": line_num,
+                      "type": dev_type or "device",
+                      "name": dev_name or "(anonymous)",
+                      "port": port_num,
+                      "port_token": port_tok,
+                      "code": raw_code
+                  })
+
+              # Pass 1: standard variable declaration with direct or copy initialization
+              for m in decl_re.finditer(clean_txt):
+                  port_num, tok = get_port_from_args(m.group("args"))
+                  if port_num is not None:
+                      add_device(m.start(), m.end(), m.group("decl_type"), m.group("var_name"), m.group("args"), port_num, tok)
+
+              # Pass 2: anonymous / dynamic constructor
+              for m in rhs_re.finditer(clean_txt):
+                  port_num, tok = get_port_from_args(m.group("args"))
+                  if port_num is not None:
+                      add_device(m.start(), m.end(), m.group("ctor_type"), m.group("lhs_var"), m.group("args"), port_num, tok)
+
+              # Pass 3: constructor member initializer list or comma-separated declaration
+              for m in mem_re.finditer(clean_txt):
+                  port_num, tok = get_port_from_args(m.group("args"))
+                  if port_num is not None:
+                      add_device(m.start(), m.end(), "device", m.group("member_name"), m.group("args"), port_num, tok)
+
+              # Pass 4: custom wrapper class initialization
+              for m in custom_decl_re.finditer(clean_txt):
+                  if m.group("class_name") in {"if", "while", "for", "switch", "catch", "return", "sizeof"}:
+                      continue
+                  port_num, tok = get_port_from_args(m.group("args"))
+                  if port_num is not None:
+                      add_device(m.start(), m.end(), m.group("class_name"), m.group("var_name"), m.group("args"), port_num, tok)
+
+              # Pass 5: fallback for any remaining unclassified line containing PORTx
+              for line_idx, clean_line in enumerate(clean_txt.splitlines(), 1):
+                  pm = port_token_re.search(clean_line)
+                  if pm:
+                      line_start_idx = sum(len(l) + 1 for l in clean_txt.splitlines()[:line_idx - 1])
+                      line_end_idx = line_start_idx + len(clean_line)
+                      if any(not (line_end_idx <= s or line_start_idx >= e) for s, e in matched_ranges):
+                          continue
+                      # Check if ignored non-device pattern
+                      if any(p.search(clean_line) for p in ignored_line_patterns):
+                          continue
+                      raw_code = raw_lines[line_idx - 1].strip() if line_idx <= len(raw_lines) else ""
+                      devices.append({
+                          "line": line_idx,
+                          "type": "device",
+                          "name": "(unclassified)",
+                          "port": int(pm.group(1)),
+                          "port_token": pm.group(0),
+                          "code": raw_code
+                      })
+
+              return devices
+
+          # Discover all project roots (directories containing makefile or Makefile)
+          projects = []
+          for mf in pathlib.Path(".").rglob("*"):
+              if mf.is_file() and mf.name.lower() == "makefile":
+                  if any(p.startswith(".") and p not in (".", "..") for p in mf.parts[:-1]):
+                      continue
+                  projects.append(mf.parent)
+
+          projects.sort()
+          print(f"=== Hardware Port Conflict Check (Intra-Project Only) ===")
+          print(f"Found {len(projects)} independent project(s). Verifying each project separately...\n")
+
+          has_any_conflict = False
+
+          for proj in projects:
+              proj_name = proj.as_posix()
+              print("----------------------------------------------------")
+              print(f"Project: '{proj_name}'")
+
+              # Gather all C/C++ files inside the project
+              files = [
+                  f for f in proj.rglob("*")
+                  if f.is_file() and f.suffix in (".cpp", ".c", ".cc", ".cxx", ".h", ".hpp")
+                  and not any(p.startswith(".") and p not in (".", "..") for p in f.parts)
+                  and "build" not in f.parts
+              ]
+              files.sort()
+
+              # Pass 1: Parse port aliases from macros and constants
+              aliases = {}
+              parsed_files = {}
+              for f in files:
+                  try:
+                      raw_txt = f.read_text(encoding="utf-8", errors="ignore")
+                  except Exception as e:
+                      print(f"Warning: could not read {f}: {e}")
+                      continue
+                  clean_txt = strip_comments_and_strings(raw_txt)
+                  parsed_files[f] = (raw_txt, clean_txt)
+                  for m in macro_re.finditer(clean_txt):
+                      aliases[m.group(1)] = int(m.group(2))
+                  for m in const_re.finditer(clean_txt):
+                      aliases[m.group(1)] = int(m.group(2))
+
+              # Pass 2: Extract device assignments per Smart Port within this project
+              ports = collections.defaultdict(list)
+              for f in files:
+                  if f not in parsed_files:
+                      continue
+                  raw_txt, clean_txt = parsed_files[f]
+                  devs = extract_devices(clean_txt, raw_txt, aliases)
+                  for d in devs:
+                      d["file"] = f.as_posix()
+                      ports[d["port"]].append(d)
+
+              # Pass 3: Check for multiple device assignments to the same port
+              conflicts = {p: devs for p, devs in ports.items() if len(devs) > 1}
+              if conflicts:
+                  has_any_conflict = True
+                  print(f"\n[ERROR] Hardware Smart Port conflict detected in project '{proj_name}':")
+                  for p_num, devs in sorted(conflicts.items()):
+                      summary_parts = [f"{d['type']} '{d['name']}' ({d['file']}:{d['line']})" for d in devs]
+                      conflict_summary = " and ".join(summary_parts)
+                      for d in devs:
+                          print(f"::error file={d['file']},line={d['line']},title=Hardware Port Conflict Detected::"
+                                f"Smart Port PORT{p_num} is assigned to multiple devices within project '{proj_name}': {conflict_summary}. "
+                                f"Each V5 Smart Port must be dedicated to a single device.")
+                      print(f"  Conflict for PORT{p_num} ({len(devs)} assignments):")
+                      for d in devs:
+                          print(f"    - {d['type']} '{d['name']}' at {d['file']}:{d['line']} ({d['port_token']}): {d['code']}")
+                      print("  Troubleshooting Guidance: V5 Brain Smart Ports cannot be shared by multiple motors or sensors. "
+                            "Please assign each conflicting device to a distinct unused Smart Port (PORT1 - PORT21).\n")
+              else:
+                  assigned = sorted(ports.keys())
+                  if assigned:
+                      port_desc = ", ".join([f"PORT{p}" for p in assigned])
+                      print(f"PASS: {len(assigned)} port(s) configured ({port_desc}). No intra-project conflicts.")
+                      for p_num in assigned:
+                          for d in ports[p_num]:
+                              print(f"  - PORT{p_num}: {d['type']} '{d['name']}' at {d['file']}:{d['line']} -> {d['code']}")
+                  else:
+                      print("PASS: No VEX Smart Ports configured.")
+
+          print("----------------------------------------------------")
+          if has_any_conflict:
+              print("\n[FAILED] One or more projects contain hardware port conflicts.")
+              sys.exit(1)
+          else:
+              print("\n[SUCCESS] All projects passed hardware port conflict checks.")
+          EOF

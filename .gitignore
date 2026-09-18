@@ -1,0 +1,14 @@
+# macOS metadata
+.DS_Store
+._*
+
+# Build outputs and binaries
+bin/
+build/
+*.bin
+*.elf
+*.o
+*.d
+
+# VEX and VS Code compile databases
+compile_commands.json
