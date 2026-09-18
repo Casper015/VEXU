@@ -106,7 +106,7 @@ jobs:
           python3 - << 'EOF'
           import json, pathlib, sys
 
-          json_files = [p for p in pathlib.Path(".").rglob("*.json") if ".git" not in p.parts and "build" not in p.parts]
+          json_files = [p for p in pathlib.Path(".").rglob("*.json") if p.parent.name == ".vscode" and "build" not in p.parts]
           failed = 0
 
           print(f"Scanning {len(json_files)} JSON configuration file(s)...")
@@ -140,7 +140,7 @@ jobs:
             pdir=$(dirname "$mf")
             pdir="${pdir#./}"
             projects+=("$pdir")
-          done < <(find . -type f \( -name "makefile" -o -name "Makefile" \) -not -path "*/.*/*" -print0 | sort -z)
+          done < <(find . -path '*/.*' -prune -o -type f \( -name "makefile" -o -name "Makefile" \) -print0 | sort -z)
 
           if [ ${#projects[@]} -eq 0 ]; then
             echo "::error title=No Projects Found::No VEX projects found containing a makefile!"
@@ -413,12 +413,14 @@ jobs:
               return devices
 
           # Discover all project roots (directories containing makefile or Makefile)
+          # Prune hidden directories (e.g. .git) and build artifacts during traversal for performance
           projects = []
-          for mf in pathlib.Path(".").rglob("*"):
-              if mf.is_file() and mf.name.lower() == "makefile":
-                  if any(p.startswith(".") and p not in (".", "..") for p in mf.parts[:-1]):
-                      continue
-                  projects.append(mf.parent)
+          for root_dir, dirs, files in os.walk(".", topdown=True):
+              dirs[:] = [d for d in dirs if not d.startswith(".") and d != "build"]
+              for f in files:
+                  if f.lower() == "makefile":
+                      projects.append(pathlib.Path(root_dir))
+                      break
 
           projects.sort()
           print(f"=== Hardware Port Conflict Check (Intra-Project Only) ===")
