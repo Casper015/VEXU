@@ -57,6 +57,9 @@ int main() {
       LeftDriveSmart.spin(forward);
       RightDriveSmart.spin(forward);
 
+      Drivetrain.setTurnVelocity(Controller1.Axis1.position(), percent);
+      Drivetrain.turn(right);
+
       wait(5, msec);
       Controller1.Screen.print("Int: %.2f Rot: %.2f", 
       TestInertial.heading(degrees), Rotation2.position(degrees));
