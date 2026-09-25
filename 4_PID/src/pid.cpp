@@ -1,4 +1,5 @@
 #include "cmath"
+#include <stdint.h>
 
 #include "v5.h"
 #include "v5_vcs.h"
@@ -27,6 +28,7 @@ double calculatePID(pid& controller, double target,
     uint32_t nowMs = Brain.Timer.time();
     uint32_t dtMS = nowMs - controller.previousTime;
 
+
     //calculate D based on the change in measurement over time
     double dOutput = 0;
     if(controller.firstRun){
@@ -40,10 +42,7 @@ double calculatePID(pid& controller, double target,
     controller.previousMeasurement = measurement;
     controller.firstRun = false;
 
-    /*
-    Implement the I term here
-    */
-   calculateI(controller, error, dtMS);
+    calculateI(controller, error, dtMS);
 
     const double output = pOutput + dOutput;
     return clamp(output, -controller.maxOutput, controller.maxOutput);
@@ -59,6 +58,9 @@ void resetPID(pid& controller){
 
 //do not finish yet, maybe implement I term later
 static double calculateI(pid& controller, double error, uint32_t dtMS){
+       /*
+    Implement the I term here
+    */
     return 0;
 }
 

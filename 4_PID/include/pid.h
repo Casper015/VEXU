@@ -10,19 +10,18 @@ newPID.ki = 0;
 newPID.maxOutput = 0;
 
 how to use this PID controller
-double speed = computerPID( 
+double speed = calculatePID( 
 newPID, 
 yourTarget,
-yourMeasurement;
+yourMeasurement）
 */
 struct pid
 {
-    double kp;
-    double ki;
-    double kd;
-    double target;
+    double kp = 0;
+    double ki = 0;
+    double kd = 0;
 
-    double maxOutput = 0;
+    double maxOutput = 100;
     double integralRange = 0;
     double maxIntegralOutput = 0;
 
