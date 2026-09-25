@@ -17,14 +17,13 @@ int main() {
   // First test: use P control for the 90-degree right turn.
   pid turnPID{};
   turnPID.kp = 0.65;
-  turnPID.ki = 5;
-  turnPID.kd = 0;
-  turnPID.maxOutput = 50;
+  turnPID.kd = 5;
+  turnPID.maxOutput = 15;
 
   pid drivePID{};
-  drivePID.kp = 0.12;
-  drivePID.kd = 0.5;
-  drivePID.maxOutput = 60;
+  drivePID.kp = 0.3;
+  drivePID.kd = 2;
+  drivePID.maxOutput = 20;
 
   int step = 1;
 
@@ -33,33 +32,33 @@ int main() {
   while(step <= 4){
     switch (step) {
     case 1:
-      // 1. 右转 90 度
       if (setupTurn(turnPID, target_inertial, 2)) {
         resetPID(turnPID);
         TestInertial.setRotation(0, degrees);
         step++;
+        wait(5000, msec); 
       }
       break;
     case 2:
-      // 2. 左转 90 度 (-90)
       if (setupTurn(turnPID, -target_inertial, 2)) {
         resetPID(drivePID);
         Rotation2.resetPosition();
         step++;
+        wait(5000, msec); 
       }
       break;
     case 3:
-      // 3. 前进 720 度
       if (setupDrive(drivePID, target_rotation2, 10)) {
         resetPID(drivePID);
         Rotation2.resetPosition();
         step++;
+        wait(5000, msec); 
       }
       break;
     case 4:
-      // 4. 后退 720 度 (-720)
       if (setupDrive(drivePID, -target_rotation2, 10)) {
         step++;
+        wait(5000, msec); 
       }
       break;
     }
@@ -67,7 +66,7 @@ int main() {
   }
 
   Drivetrain.stop(brake);
-  controller_screen();
+  return 0;
 }
 
 bool setupTurn(pid& controller, double targetAngle, 
@@ -75,7 +74,7 @@ bool setupTurn(pid& controller, double targetAngle,
     
     double currentAngle = TestInertial.rotation(degrees);
     double error = targetAngle - currentAngle;
-
+    controller_screen();
     if (fabs(error) <= uncertainty) {
       Drivetrain.stop(brake); 
       return true;
@@ -87,6 +86,7 @@ bool setupTurn(pid& controller, double targetAngle,
     } else {
       Drivetrain.turn(left, -speed, velocityUnits::pct);
     }
+    
     return false;
 }
 
@@ -95,6 +95,7 @@ bool setupDrive(pid& controller, double targetDistance,
     
     double currentDistance = Rotation2.position(degrees);
     double error = targetDistance - currentDistance;
+  controller_screen();
 
     if (fabs(error) <= uncertainty) {
       Drivetrain.stop(brake); 
