@@ -12,18 +12,18 @@ int main() {
   }
 
   double target_inertial = 90;
-  double target_rotation2 = 720;
+  double target_rotation2 = 3600;
 
   // First test: use P control for the 90-degree right turn.
   pid turnPID{};
   turnPID.kp = 0.65;
   turnPID.kd = 5;
-  turnPID.maxOutput = 15;
+  turnPID.maxOutput = 50;
 
   pid drivePID{};
-  drivePID.kp = 0.3;
-  drivePID.kd = 2;
-  drivePID.maxOutput = 20;
+  drivePID.kp = 0.12;
+  drivePID.kd = 0.8;
+  drivePID.maxOutput = 60;
 
   int step = 1;
 
@@ -34,13 +34,12 @@ int main() {
     case 1:
       if (setupTurn(turnPID, target_inertial, 2)) {
         resetPID(turnPID);
-        TestInertial.setRotation(0, degrees);
         step++;
         wait(5000, msec); 
       }
       break;
     case 2:
-      if (setupTurn(turnPID, -target_inertial, 2)) {
+      if (setupTurn(turnPID, 0, 2)) {
         resetPID(drivePID);
         Rotation2.resetPosition();
         step++;
@@ -50,19 +49,18 @@ int main() {
     case 3:
       if (setupDrive(drivePID, target_rotation2, 10)) {
         resetPID(drivePID);
-        Rotation2.resetPosition();
         step++;
         wait(5000, msec); 
       }
       break;
     case 4:
-      if (setupDrive(drivePID, -target_rotation2, 10)) {
+      if (setupDrive(drivePID, 0, 10)) {
         step++;
         wait(5000, msec); 
       }
       break;
     }
-    wait(20, msec);
+  wait(50, msec);
   }
 
   Drivetrain.stop(brake);
@@ -94,9 +92,8 @@ bool setupDrive(pid& controller, double targetDistance,
   double uncertainty) {
     
     double currentDistance = Rotation2.position(degrees);
-    double error = targetDistance - currentDistance;
-  controller_screen();
-
+    double error = targetDistance - currentDistance; 
+    controller_screen();
     if (fabs(error) <= uncertainty) {
       Drivetrain.stop(brake); 
       return true;

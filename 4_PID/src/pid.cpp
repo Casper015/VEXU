@@ -18,10 +18,18 @@ static inline double clamp(double x, double min, double max);
 // need to implement the I term for the PID controller
 double calculatePID(pid& controller, double target, 
     double measurement){
-
+    if (!std::isfinite(target) || !std::isfinite(measurement) ||
+        !std::isfinite(controller.maxOutput) ||
+        controller.maxOutput <= 0 || controller.maxOutput > 100) {
+        resetPID(controller);
+        return 0;
+    }
+    
     //setup P base on the error multiplied by the proportional gain
     const double error = target - measurement;
     const double pOutput = controller.kp * error;
+    
+
 
     //all the ts is base on the ms(uint32_t), 
     //put this in the design of all the others code.
@@ -35,6 +43,7 @@ double calculatePID(pid& controller, double target,
     }else if(dtMS > 0){
         dOutput = -controller.kd * 
         (measurement - controller.previousMeasurement)/dtMS;
+        dOutput = clamp(dOutput, -controller.maxOutput * 0.3, controller.maxOutput * 0.3);
     }
 
     controller.previousTime = nowMs;
