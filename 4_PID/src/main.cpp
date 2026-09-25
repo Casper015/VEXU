@@ -34,6 +34,7 @@ int main() {
   Rotation2.resetPosition();
   wait(500,msec);
   
+  //Move forward until Rotation2 reaches the target position.
   while(fabs(Rotation2.position(degrees)) < target_rotation2 - uncertainty){
     Drivetrain.drive(forward);
   }
@@ -43,6 +44,7 @@ int main() {
   Rotation2.resetPosition();
   wait(500, msec);
 
+  //Move backward until Rotation2 reaches the target position.
   while(fabs(Rotation2.position(degrees)) < target_rotation2 - uncertainty){
     Drivetrain.drive(reverse);
   }

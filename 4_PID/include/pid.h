@@ -13,8 +13,7 @@ how to use this PID controller
 double speed = computerPID( 
 newPID, 
 yourTarget,
-yourMeasurement,
-dt(ms));
+yourMeasurement;
 */
 struct pid
 {

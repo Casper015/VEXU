@@ -1,4 +1,10 @@
-#include "vex.h"
+#include "cmath"
+
+#include "v5.h"
+#include "v5_vcs.h"
+
+#include "robot-config.h"
+#include "pid.h"
 
 using namespace vex;
 
@@ -37,7 +43,7 @@ double calculatePID(pid& controller, double target,
     /*
     Implement the I term here
     */
-    calculateI(controller, error, dtMS);
+   calculateI(controller, error, dtMS);
 
     const double output = pOutput + dOutput;
     return clamp(output, -controller.maxOutput, controller.maxOutput);

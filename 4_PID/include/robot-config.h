@@ -1,3 +1,5 @@
+#ifndef ROBOT_CONFIG_H
+#define ROBOT_CONFIG_H
 using namespace vex;
 
 extern brain Brain;
@@ -22,3 +24,5 @@ extern motor ArmMotor;
  * This should be called at the start of your int main function.
  */
 void  vexcodeInit( void );
+
+#endif // ROBOT_CONFIG_H
