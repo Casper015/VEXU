@@ -43,7 +43,6 @@ double calculatePID(pid& controller, double target,
     }else if(dtMS > 0){
         dOutput = -controller.kd * 
         (measurement - controller.previousMeasurement)/dtMS;
-        dOutput = clamp(dOutput, -controller.maxOutput * 0.3, controller.maxOutput * 0.3);
     }
 
     controller.previousTime = nowMs;
@@ -54,6 +53,10 @@ double calculatePID(pid& controller, double target,
     calculateI(controller, error, dtMS);
 
     const double output = pOutput + dOutput;
+    if(!std::isfinite(output)){
+        resetPID(controller);
+        return 0;
+    }
     return clamp(output, -controller.maxOutput, controller.maxOutput);
 
 }
