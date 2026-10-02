@@ -35,3 +35,9 @@ double cm_to_degree(double centimeters) {
 double distance_to_degree(const double distance, const bool inch_or_cm) {
     return inch_or_cm ? inch_to_degree(distance) : cm_to_degree(distance);
 }
+
+double clampP(double x, double min, double max){
+    if (x < min) return min;
+    if (x > max) return max;
+    return x;
+}

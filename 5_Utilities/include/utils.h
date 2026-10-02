@@ -10,4 +10,6 @@ double distance_to_degree(const double distance, const bool inch_or_cm);
 double cm_to_degree(double centimeters);
 double inch_to_degree(double inches);
 
+double clampP(double x, double min, double max);
+
 #endif // UTILS_H

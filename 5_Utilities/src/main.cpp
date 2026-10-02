@@ -2,8 +2,15 @@
 
 using namespace vex;
 
-bool setupTurn(pid& controller, double targetAngle, double uncertainty = 2.0);
-bool setupDrive(pid& controller, double targetDistance, double uncertainty = 2.0);
+bool setupTurn(pid& controller, double targetAngle, double uncertainty = 1);
+bool setupDrive(pid& controller, double targetDistance, double targetHeading, double uncertainty = 1);
+
+
+const double leftRatio = 0.9;
+const double rightRatio = 1.0;
+
+const double headingKp = 0.5;
+const double maxCorrection = 8.0;
 
 int main() {
   vexcodeInit();
@@ -23,9 +30,9 @@ int main() {
   turnPID.maxOutput = 50;
 
   pid drivePID{};
-  drivePID.kp = 0.08;
-  drivePID.kd = 1;
-  drivePID.maxOutput = 60;
+  drivePID.kp = 0.06;
+  drivePID.kd = 0.8;
+  drivePID.maxOutput = 50;
 
   int step = 3;
 
@@ -49,6 +56,8 @@ int main() {
       }
       break;
     case 3:
+      TestInertial.setRotation(0, degrees);
+      double driveHeading = TestInertial.rotation(degrees);
       if (setupDrive(drivePID, target_rotation2, 1)) {
         resetPID(drivePID);
         step++;
@@ -56,6 +65,8 @@ int main() {
       }
       break;
     case 4:
+      TestInertial.setRotation(0, degrees);
+      double driveHeading = TestInertial.rotation(degrees);
       if (setupDrive(drivePID, 0,1)) {
         step++;
         wait(5000, msec); 
@@ -86,20 +97,30 @@ bool setupTurn(pid& controller, double targetAngle,
     return false;
 }
 
-bool setupDrive(pid& controller, double targetDistance, 
-  double uncertainty_cm) {
+bool setupDrive(pid& controller, double targetDistance, double targetHeading, 
+  double uncertainty_cm = 1.0) {
     
-    double uncertainty = degree_to_cm(uncertainty_cm);
     double currentDistance = Rotation2.position(degrees);
-    double error = targetDistance - currentDistance; 
-    
-    if (hasSettled(controller, error, uncertainty, 150)) {
+    double uncertainty_degree = cm_to_degree(uncertainty_cm);
+    double DistanceError = targetDistance - currentDistance; 
+
+    if (hasSettled(controller, DistanceError, uncertainty_degree, 150)) {
       Drivetrain.stop(brake); 
       return true;
     }
 
     double speed = calculatePID(controller, targetDistance, currentDistance);
-    Drivetrain.drive(forward, speed, velocityUnits::pct);
+
+    double headingError = targetHeading - TestInertial.rotation(degrees);
+
+    while (headingError > 180) headingError -= 360;
+    while (headingError < -180) headingError += 360;
+    
+    
+
+    LeftDriveSmart.spin(forward, speed*leftRatio, velocityUnits::pct);
+    RightDriveSmart.spin(forward, speed*rightRatio, velocityUnits::pct);
+
     return false;
 }
 
