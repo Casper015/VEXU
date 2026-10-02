@@ -3,10 +3,10 @@
 using namespace vex;
 
 bool setupTurn(pid& controller, double targetAngle, double uncertainty = 1);
-bool setupDrive(pid& controller, double targetDistance, double targetHeading, double uncertainty = 1);
+bool setupDrive(pid& controller, double targetDistance, double targetHeading, double uncertainty_cm = 1.0);
 
 
-const double leftRatio = 0.9;
+const double leftRatio = 0.95;
 const double rightRatio = 1.0;
 
 const double headingKp = 0.5;
@@ -31,12 +31,13 @@ int main() {
 
   pid drivePID{};
   drivePID.kp = 0.06;
-  drivePID.kd = 0.8;
+  drivePID.kd = 1;
   drivePID.maxOutput = 50;
 
   int step = 3;
 
   TestInertial.setRotation(0, degrees);
+  double driveHeading = TestInertial.rotation(degrees);
 
   while(step <= 4){
     switch (step) {
@@ -51,23 +52,20 @@ int main() {
       if (setupTurn(turnPID, 0, 1)) {
         resetPID(drivePID);
         Rotation2.resetPosition();
+        driveHeading = TestInertial.rotation(degrees);
         step++;
         wait(5000, msec); 
       }
       break;
     case 3:
-      TestInertial.setRotation(0, degrees);
-      double driveHeading = TestInertial.rotation(degrees);
-      if (setupDrive(drivePID, target_rotation2, 1)) {
+      if (setupDrive(drivePID, target_rotation2, driveHeading, 1)) {
         resetPID(drivePID);
         step++;
         wait(5000, msec); 
       }
       break;
     case 4:
-      TestInertial.setRotation(0, degrees);
-      double driveHeading = TestInertial.rotation(degrees);
-      if (setupDrive(drivePID, 0,1)) {
+      if (setupDrive(drivePID, 0, driveHeading, 1)) {
         step++;
         wait(5000, msec); 
       }
@@ -98,7 +96,7 @@ bool setupTurn(pid& controller, double targetAngle,
 }
 
 bool setupDrive(pid& controller, double targetDistance, double targetHeading, 
-  double uncertainty_cm = 1.0) {
+  double uncertainty_cm) {
     
     double currentDistance = Rotation2.position(degrees);
     double uncertainty_degree = cm_to_degree(uncertainty_cm);
@@ -118,8 +116,14 @@ bool setupDrive(pid& controller, double targetDistance, double targetHeading,
     
     
 
-    LeftDriveSmart.spin(forward, speed*leftRatio, velocityUnits::pct);
-    RightDriveSmart.spin(forward, speed*rightRatio, velocityUnits::pct);
+    double correction = clampP(headingKp * headingError, 0, maxCorrection);
+
+    // Apply each side's compensation to the combined drive and heading command.
+    double leftSpeed = clampP((speed + correction) * leftRatio, 0, controller.maxOutput);
+    double rightSpeed = clampP((speed - correction) * rightRatio, 0, controller.maxOutput);
+
+    LeftDriveSmart.spin(forward, leftSpeed, velocityUnits::pct);
+    RightDriveSmart.spin(forward, rightSpeed, velocityUnits::pct);
 
     return false;
 }
