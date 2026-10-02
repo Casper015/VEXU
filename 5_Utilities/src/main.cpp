@@ -11,7 +11,7 @@ int main() {
     wait(20, msec);
   }
 
-  double howFarM = 3.0;
+  double howFarM = 0.5;
 
   double target_inertial = 90;
   double target_rotation2 = m_to_degree(howFarM);
@@ -62,7 +62,7 @@ int main() {
       }
       break;
     }
-  wait(50, msec);
+  wait(20, msec);
   }
 
   Drivetrain.stop(brake);
@@ -74,7 +74,6 @@ bool setupTurn(pid& controller, double targetAngle,
     
     double currentAngle = TestInertial.rotation(degrees);
     double error = targetAngle - currentAngle;
-    controller_screen();
     
     if (hasSettled(controller, error, uncertainty, 150)) {
       Drivetrain.stop(brake); 
@@ -96,7 +95,6 @@ bool setupDrive(pid& controller, double targetDistance,
     
     double currentDistance = Rotation2.position(degrees);
     double error = targetDistance - currentDistance; 
-    controller_screen();
     
     if (hasSettled(controller, error, uncertainty, 150)) {
       Drivetrain.stop(brake); 

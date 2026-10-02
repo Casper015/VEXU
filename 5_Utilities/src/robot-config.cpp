@@ -27,14 +27,15 @@ rotation Rotation2 = rotation(PORT18, false);
 
 // VEXcode generated functions
 
-
+void vexcodeInit();
+void screenRefresh();
 
 /**
  * Used to initialize code/tasks/devices added using tools in VEXcode Pro.
  * 
  * This should be called at the start of your int main function.
  */
-void vexcodeInit( void ) {
+void vexcodeInit() {
   //reset devices and calibrate sensors
   Rotation2.resetPosition();
   TestInertial.resetRotation();
@@ -58,4 +59,13 @@ void vexcodeInit( void ) {
 
   //add a delay to allow the inertial sensor to calibrate
   wait(30,msec);
+
+  vex::thread screenThread(screenRefresh);
+}
+
+void screenRefresh() {
+    while (true) {
+        controller_screen();
+        wait(200, msec);
+    }
 }

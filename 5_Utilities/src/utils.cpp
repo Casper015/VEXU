@@ -2,14 +2,12 @@
 #include <cmath>
 
 #ifndef M_PI
-#define M_PI 3.14159265358979323846
+#define M_PI 3.14159265358979323846 
 #endif
 
-// 轮子周长 (Circumference)
 static constexpr double CIRCUMFERENCE_INCH = M_PI * WHEEL_DIAMETER_INCH; // ~10.210176 inch
 static constexpr double CIRCUMFERENCE_M    = M_PI * WHEEL_DIAMETER_M;    // ~0.2593385 m
 
-// 角度转距离
 double degree_to_inch(double degree) {
     return (degree / 360.0) * CIRCUMFERENCE_INCH;
 }
