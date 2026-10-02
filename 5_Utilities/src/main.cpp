@@ -6,7 +6,7 @@ bool setupTurn(pid& controller, double targetAngle, double uncertainty = 1);
 bool setupDrive(pid& controller, double targetDistance, double targetHeading, double uncertainty_cm = 1.0);
 
 
-const double leftRatio = 0.95;
+const double leftRatio = 0.98;
 const double rightRatio = 1.0;
 
 const double headingKp = 0.5;
@@ -18,7 +18,7 @@ int main() {
     wait(20, msec);
   }
 
-  double howFarCm = 50.0;
+  double howFarCm = 100.0;
 
   double target_inertial = 90;
   double target_rotation2 = cm_to_degree(howFarCm);
@@ -116,11 +116,11 @@ bool setupDrive(pid& controller, double targetDistance, double targetHeading,
     
     
 
-    double correction = clampP(headingKp * headingError, 0, maxCorrection);
+    double correction = clampP(headingKp * headingError, -maxCorrection, maxCorrection);
 
     // Apply each side's compensation to the combined drive and heading command.
-    double leftSpeed = clampP((speed + correction) * leftRatio, 0, controller.maxOutput);
-    double rightSpeed = clampP((speed - correction) * rightRatio, 0, controller.maxOutput);
+    double leftSpeed = clampP((speed + correction) * leftRatio, -controller.maxOutput, controller.maxOutput);
+    double rightSpeed = clampP((speed - correction) * rightRatio, -controller.maxOutput, controller.maxOutput);
 
     LeftDriveSmart.spin(forward, leftSpeed, velocityUnits::pct);
     RightDriveSmart.spin(forward, rightSpeed, velocityUnits::pct);
