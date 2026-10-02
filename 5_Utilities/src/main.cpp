@@ -11,10 +11,10 @@ int main() {
     wait(20, msec);
   }
 
-  double howFarM = 0.5;
+  double howFarCm = 50.0;
 
   double target_inertial = 90;
-  double target_rotation2 = m_to_degree(howFarM);
+  double target_rotation2 = cm_to_degree(howFarCm);
 
   // First test: use P control for the 90-degree right turn.
   pid turnPID{};
@@ -27,21 +27,21 @@ int main() {
   drivePID.kd = 1;
   drivePID.maxOutput = 60;
 
-  int step = 1;
+  int step = 3;
 
   TestInertial.setRotation(0, degrees);
 
   while(step <= 4){
     switch (step) {
     case 1:
-      if (setupTurn(turnPID, target_inertial, 2)) {
+      if (setupTurn(turnPID, target_inertial, 1)) {
         resetPID(turnPID);
         step++;
         wait(5000, msec); 
       }
       break;
     case 2:
-      if (setupTurn(turnPID, 0, 2)) {
+      if (setupTurn(turnPID, 0, 1)) {
         resetPID(drivePID);
         Rotation2.resetPosition();
         step++;
@@ -49,14 +49,14 @@ int main() {
       }
       break;
     case 3:
-      if (setupDrive(drivePID, target_rotation2, 360)) {
+      if (setupDrive(drivePID, target_rotation2, 1)) {
         resetPID(drivePID);
         step++;
         wait(5000, msec); 
       }
       break;
     case 4:
-      if (setupDrive(drivePID, 0, 360)) {
+      if (setupDrive(drivePID, 0,1)) {
         step++;
         wait(5000, msec); 
       }
@@ -87,8 +87,9 @@ bool setupTurn(pid& controller, double targetAngle,
 }
 
 bool setupDrive(pid& controller, double targetDistance, 
-  double uncertainty) {
+  double uncertainty_cm) {
     
+    double uncertainty = degree_to_cm(uncertainty_cm);
     double currentDistance = Rotation2.position(degrees);
     double error = targetDistance - currentDistance; 
     
