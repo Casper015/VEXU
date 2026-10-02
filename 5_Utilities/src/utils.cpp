@@ -1,11 +1,36 @@
-#include <iostream>
+#include "utils.h"
+#include <cmath>
 
-// d = 3.25 inches
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
-double degree_to (const double degree, const bool inch_or_m) {
-    if (inch_or_m) {
-        return (degree / 360) * 3.14 * 3.25;
-    } else {
-        return (degree / 360) * 3.14 * 3.25 * 0.0254;
-    }
+// 轮子周长 (Circumference)
+static constexpr double CIRCUMFERENCE_INCH = M_PI * WHEEL_DIAMETER_INCH; // ~10.210176 inch
+static constexpr double CIRCUMFERENCE_M    = M_PI * WHEEL_DIAMETER_M;    // ~0.2593385 m
+
+// 角度转距离
+double degree_to_inch(double degree) {
+    return (degree / 360.0) * CIRCUMFERENCE_INCH;
+}
+
+double degree_to_m(double degree) {
+    return (degree / 360.0) * CIRCUMFERENCE_M;
+}
+
+double degree_to(const double degree, const bool inch_or_m) {
+    return inch_or_m ? degree_to_inch(degree) : degree_to_m(degree);
+}
+
+// 距离转角度
+double inch_to_degree(double inches) {
+    return (inches / CIRCUMFERENCE_INCH) * 360.0;
+}
+
+double m_to_degree(double meters) {
+    return (meters / CIRCUMFERENCE_M) * 360.0;
+}
+
+double distance_to_degree(const double distance, const bool inch_or_m) {
+    return inch_or_m ? inch_to_degree(distance) : m_to_degree(distance);
 }

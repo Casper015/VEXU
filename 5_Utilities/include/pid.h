@@ -25,6 +25,9 @@ struct pid
     double integralRange = 0;
     double maxIntegralOutput = 0;
 
+    uint32_t settleStartMs = 0;
+    bool settling = false;  
+
     uint32_t previousTime = 0;
     double previousError = 0;
     double previousMeasurement = 0;
@@ -38,4 +41,9 @@ void resetPID(pid& controller);
 // main function to calculate the PID output
 double calculatePID(pid& controller, double target, 
     double measurement);
+
+// check if PID controller has settled within uncertainty
+bool hasSettled(pid& controller, double error, 
+    double uncertainty, uint32_t settleTimeMs = 150);
+
 #endif // PID_H

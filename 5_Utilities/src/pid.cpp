@@ -66,6 +66,26 @@ void resetPID(pid& controller){
     controller.previousMeasurement = 0;
     controller.integral = 0;
     controller.firstRun = true;
+
+    controller.settleStartMs = 0;
+    controller.settling = false;  
+}
+
+bool hasSettled(pid& controller, double error, 
+    double uncertainty, uint32_t settleTimeMs) {  
+    uint32_t nowMs = Brain.Timer.time();
+    
+    if (std::fabs(error) > uncertainty) {
+        controller.settling = false;
+        return false;
+    }
+    
+    if (!controller.settling) {
+        controller.settleStartMs = nowMs;
+        controller.settling = true;
+    }
+
+    return (nowMs - controller.settleStartMs) >= settleTimeMs;
 }
 
 //do not finish yet, maybe implement I term later

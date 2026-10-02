@@ -9,6 +9,7 @@
 #include "controller.h"
 #include "robot-config.h"
 #include "pid.h"
+#include "utils.h"
 
 #define waitUntil(condition)                                                   \
   do {                                                                         \
