@@ -19,13 +19,13 @@ int main() {
   // First test: use P control for the 90-degree right turn.
   pid turnPID{};
   turnPID.kp = 0.65;
-  turnPID.kd = 5;
+  turnPID.kd = 4.15;
   turnPID.maxOutput = 50;
 
   pid drivePID{};
   drivePID.kp = 0.08;
   drivePID.kd = 1;
-  drivePID.maxOutput = 50;
+  drivePID.maxOutput = 60;
 
   int step = 1;
 
@@ -81,11 +81,7 @@ bool setupTurn(pid& controller, double targetAngle,
     }
 
     double speed = calculatePID(controller, targetAngle, currentAngle);
-    if (speed >= 0) {
-      Drivetrain.turn(right, speed, velocityUnits::pct);
-    } else {
-      Drivetrain.turn(left, -speed, velocityUnits::pct);
-    }
+    Drivetrain.turn(right, speed, velocityUnits::pct);
     
     return false;
 }
@@ -102,11 +98,7 @@ bool setupDrive(pid& controller, double targetDistance,
     }
 
     double speed = calculatePID(controller, targetDistance, currentDistance);
-    if (speed >= 0) {
-      Drivetrain.drive(forward, speed, velocityUnits::pct);
-    } else {
-      Drivetrain.drive(reverse, -speed, velocityUnits::pct);
-    }
+    Drivetrain.drive(forward, speed, velocityUnits::pct);
     return false;
 }
 

@@ -2,7 +2,7 @@
 #include <cmath>
 
 #ifndef M_PI
-#define M_PI 3.14159265358979323846 
+#define M_PI 3.1415926535897932386
 #endif
 
 static constexpr double CIRCUMFERENCE_INCH = M_PI * WHEEL_DIAMETER_INCH; // ~10.210176 inch
@@ -20,7 +20,6 @@ double degree_to(const double degree, const bool inch_or_m) {
     return inch_or_m ? degree_to_inch(degree) : degree_to_m(degree);
 }
 
-// 距离转角度
 double inch_to_degree(double inches) {
     return (inches / CIRCUMFERENCE_INCH) * 360.0;
 }
