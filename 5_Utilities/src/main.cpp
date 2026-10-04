@@ -2,14 +2,14 @@
 
 using namespace vex;
 
-bool setupTurn(pid& controller, double targetAngle, double uncertainty = 1);
-bool setupDrive(pid& controller, double targetDistance, double targetHeading, double uncertainty_cm = 1.0);
+bool setupTurn(pid& controller, double targetAngle, double uncertainty = 2);
+bool setupDrive(pid& controller, double targetDistance, double targetHeading, double uncertainty_cm = 2.0);
 
 
-const double leftRatio = 0.98;
+const double leftRatio = 0.95;
 const double rightRatio = 1.0;
 
-const double headingKp = 0.5;
+const double headingKp = 1;
 const double maxCorrection = 8.0;
 
 int main() {
@@ -18,7 +18,7 @@ int main() {
     wait(20, msec);
   }
 
-  double howFarCm = 100.0;
+  double howFarCm = 50.0;
 
   double target_inertial = 90;
   double target_rotation2 = cm_to_degree(howFarCm);
@@ -26,15 +26,15 @@ int main() {
   // First test: use P control for the 90-degree right turn.
   pid turnPID{};
   turnPID.kp = 0.65;
-  turnPID.kd = 4.15;
-  turnPID.maxOutput = 50;
+  turnPID.kd = 16.00;
+  turnPID.maxOutput = 80;
 
   pid drivePID{};
-  drivePID.kp = 0.06;
-  drivePID.kd = 1;
-  drivePID.maxOutput = 50;
+  drivePID.kp = 0.08;
+  drivePID.kd = 5;
+  drivePID.maxOutput = 80;
 
-  int step = 3;
+  int step = 1;
 
   TestInertial.setRotation(0, degrees);
   double driveHeading = TestInertial.rotation(degrees);
@@ -71,7 +71,7 @@ int main() {
       }
       break;
     }
-  wait(20, msec);
+  wait(10, msec);
   }
 
   Drivetrain.stop(brake);
@@ -84,7 +84,7 @@ bool setupTurn(pid& controller, double targetAngle,
     double currentAngle = TestInertial.rotation(degrees);
     double error = targetAngle - currentAngle;
     
-    if (hasSettled(controller, error, uncertainty, 150)) {
+    if (hasSettled(controller, error, uncertainty, 50)) {
       Drivetrain.stop(brake); 
       return true;
     }
