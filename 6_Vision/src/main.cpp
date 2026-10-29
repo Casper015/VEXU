@@ -1,13 +1,10 @@
 #include "vex.h"
+#include "vision.h"
 
 using namespace vex;
 
 bool setupTurn(pid& controller, double targetAngle, double uncertainty = 2);
 bool setupDrive(pid& controller, double targetDistance, double targetHeading, double uncertainty_cm = 2.0);
-
-
-const double leftRatio = 0.95;
-const double rightRatio = 1.0;
 
 const double headingKp = 1;
 const double maxCorrection = 8.0;
@@ -18,63 +15,42 @@ int main() {
     wait(20, msec);
   }
 
-  double howFarCm = 50.0;
-
-  double target_inertial = 90;
-  double target_rotation2 = cm_to_degree(howFarCm);
-
-  // First test: use P control for the 90-degree right turn.
-  pid turnPID{};
-  turnPID.kp = 0.65;
-  turnPID.kd = 16.00;
-  turnPID.maxOutput = 80;
+  if (!Vision1.installed()) {
+    Drivetrain.stop(brake);
+    Brain.Screen.print("Vision disconnected");
+    return 0;
+  }
 
   pid drivePID{};
   drivePID.kp = 0.08;
-  drivePID.kd = 5;
-  drivePID.maxOutput = 80;
+  drivePID.kd = 5.0;
+  drivePID.maxOutput = 35.0;
 
-  int step = 1;
+  resetPID(drivePID);
+  Rotation2.resetPosition();
 
-  TestInertial.setRotation(0, degrees);
-  double driveHeading = TestInertial.rotation(degrees);
+  // Drive forward 50 cm while keeping BLUE_TARGET horizontally centered.
+  const double targetDistance = cm_to_degree(50.0);
+  const double startMs = Brain.Timer.time();
+  const double timeoutMs = 15000.0;
+  bool reached = false;
 
-  while(step <= 4){
-    switch (step) {
-    case 1:
-      if (setupTurn(turnPID, target_inertial, 1)) {
-        resetPID(turnPID);
-        step++;
-        wait(5000, msec); 
-      }
-      break;
-    case 2:
-      if (setupTurn(turnPID, 0, 1)) {
-        resetPID(drivePID);
-        Rotation2.resetPosition();
-        driveHeading = TestInertial.rotation(degrees);
-        step++;
-        wait(5000, msec); 
-      }
-      break;
-    case 3:
-      if (setupDrive(drivePID, target_rotation2, driveHeading, 1)) {
-        resetPID(drivePID);
-        step++;
-        wait(5000, msec); 
-      }
-      break;
-    case 4:
-      if (setupDrive(drivePID, 0, driveHeading, 1)) {
-        step++;
-        wait(5000, msec); 
-      }
+  Brain.Screen.clearScreen();
+  Brain.Screen.setCursor(1, 1);
+  Brain.Screen.print("Tracking BLUE...");
+
+  while (Brain.Timer.time() - startMs < timeoutMs) {
+    if (setupVisionDrive(drivePID, targetDistance, 1.0)) {
+      reached = true;
       break;
     }
-  wait(10, msec);
+    wait(20, msec);
   }
 
   Drivetrain.stop(brake);
+  Brain.Screen.clearScreen();
+  Brain.Screen.setCursor(1, 1);
+  Brain.Screen.print(reached ? "Finished" : "Timed out");
   return 0;
 }
 

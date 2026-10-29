@@ -6,6 +6,9 @@ extern brain Brain;
 extern controller Controller1;
 
 // VEXcode devices
+const double leftRatio = 0.95;
+const double rightRatio = 1.0;
+
 extern drivetrain Drivetrain;
 extern motor LeftDriveSmart;
 extern motor RightDriveSmart;
@@ -13,9 +16,11 @@ extern motor RightDriveSmart;
 extern inertial TestInertial;
 extern rotation Rotation2;
 
-
 extern motor ClawMotor;
 extern motor ArmMotor;
+
+extern vex::vision::signature BLUE_TARGET;
+extern vision Vision1;
 
 
 /**

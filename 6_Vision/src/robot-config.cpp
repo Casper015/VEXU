@@ -25,6 +25,12 @@ drivetrain Drivetrain = drivetrain
 inertial TestInertial = inertial(PORT17);
 rotation Rotation2 = rotation(PORT18, false);
 
+// BLUE_TARGET is signature slot 1 from the Vision Utility export.
+signature BLUE_TARGET(
+    1, -1885, -1609, -1747, 1285, 1643, 1464, 2.5, 0
+);
+vision Vision1(PORT1, 50, BLUE_TARGET);
+
 // VEXcode generated functions
 
 void vexcodeInit();
