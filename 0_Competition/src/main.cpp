@@ -19,7 +19,7 @@ competition Competition;
 /*---------------------------------------------------------------------------*/
 
 // Per-side compensation so the robot drives straight.
-const double leftRatio = 0.95;
+const double leftRatio = 1.0;
 const double rightRatio = 1.0;
 
 // Heading hold while driving straight.
@@ -35,6 +35,10 @@ const double srcKd = 0.67;
 const double srcLoopMs = 10;
 const double turnMaxOutput = 15;
 const double driveMaxOutput = 50;
+
+// TEST ONLY: press Up during driver control to run autonomous().
+// Set to false before a real competition.
+const bool enableAutoTestButton = true;
 
 // Joystick values below this are treated as 0 (stops drift when released).
 const int joystickDeadband = 5;
@@ -98,7 +102,7 @@ void drivePID(double distanceCm, uint32_t timeoutMs = 0) {
 /*---------------------------------------------------------------------------*/
 
 void pre_auton(void) {
-  // Calibrate sensors, bind L1/L2 (arm) and R1/R2 (claw), start screen thread.
+  // Calibrate sensors, bind L1/L2 (arm), R1/R2 (lift), X/Y (intake), B (carousel), start screen thread.
   vexcodeInit();
   while (TestInertial.isCalibrating()) {
     wait(20, msec);
@@ -114,14 +118,15 @@ void autonomous(void) {
   TestInertial.setRotation(0, degrees);
   targetHeading = 0;
 
-  drivePID(250);
+  drivePID(25);
   turnPID(90);
-  drivePID(100);
-  drivePID(-100);
+  drivePID(10);
+  drivePID(-10);
   turnPID(-90);
-  drivePID(100);
+  drivePID(10);
   turnPID(90);
-  drivePID(250);
+  turnPID(-90);
+  drivePID(25);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -130,16 +135,25 @@ void autonomous(void) {
 
 void usercontrol(void) {
   while (true) {
-    // Arcade drive: left stick up/down = forward/back, right stick left/right = turn.
+    // Up button: run the autonomous route once (joystick is ignored meanwhile).
+    if (enableAutoTestButton && Controller1.ButtonUp.pressing()) {
+      Drivetrain.stop(brake);
+      autonomous();
+      waitUntil(!Controller1.ButtonUp.pressing()); // no repeat if still held
+      continue;
+    }
+
+    // Single-stick arcade: left stick up/down = forward/back,
+    // left stick left/right = turn.
     int forwardInput = Controller1.Axis3.position();
-    int turnInput = Controller1.Axis1.position();
+    int turnInput = Controller1.Axis4.position();
     if (abs(forwardInput) < joystickDeadband) forwardInput = 0;
     if (abs(turnInput) < joystickDeadband) turnInput = 0;
 
     LeftDriveSmart.spin(forward, forwardInput + turnInput, percent);
     RightDriveSmart.spin(forward, forwardInput - turnInput, percent);
 
-    // Arm (L1/L2) and claw (R1/R2) are handled by the button callbacks
+    // Arm (L1/L2), lift (R1/R2), intake (X/Y) and carousel (B) are handled by the button callbacks
     // registered in vexcodeInit().
 
     wait(20, msec);
