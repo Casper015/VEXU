@@ -102,7 +102,7 @@ void drivePID(double distanceCm, uint32_t timeoutMs = 0) {
 /*---------------------------------------------------------------------------*/
 
 void pre_auton(void) {
-  // Calibrate sensors, bind L1/L2 (arm), R1/R2 (lift), X/Y (intake), B (carousel), start screen thread.
+  // Calibrate sensors and start the screen thread.
   vexcodeInit();
   while (TestInertial.isCalibrating()) {
     wait(20, msec);
@@ -143,18 +143,24 @@ void usercontrol(void) {
       continue;
     }
 
-    // Single-stick arcade: left stick up/down = forward/back,
-    // left stick left/right = turn.
+    // Left stick up/down = forward/back, left stick left/right = turn.
     int forwardInput = Controller1.Axis3.position();
     int turnInput = Controller1.Axis4.position();
+    int liftInput = Controller1.Axis2.position();
     if (abs(forwardInput) < joystickDeadband) forwardInput = 0;
     if (abs(turnInput) < joystickDeadband) turnInput = 0;
+    if (abs(liftInput) < joystickDeadband) liftInput = 0;
 
     LeftDriveSmart.spin(forward, forwardInput + turnInput, percent);
     RightDriveSmart.spin(forward, forwardInput - turnInput, percent);
 
-    // Arm (L1/L2), lift (R1/R2), intake (X/Y) and carousel (B) are handled by the button callbacks
-    // registered in vexcodeInit().
+    if (liftInput > 0) {
+      Lift.spin(forward, liftInput, percent);
+    } else if (liftInput < 0) {
+      Lift.spin(reverse, -liftInput, percent);
+    } else {
+      Lift.stop(hold);
+    }
 
     wait(20, msec);
   }

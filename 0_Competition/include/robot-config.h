@@ -19,12 +19,6 @@ extern rotation Rotation2;
 // extern vision Vision1;  // vision sensor not installed yet
 
 
-// extern motor ClawMotor;  // claw not installed yet
-extern motor ArmMotor;
-extern motor IntakeMotorA;
-extern motor IntakeMotorB;
-extern motor_group Intake;
-extern motor Carousel;
 extern motor LiftMotorA;
 extern motor LiftMotorB;
 extern motor_group Lift;
