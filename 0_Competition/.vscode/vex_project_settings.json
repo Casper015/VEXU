@@ -4,12 +4,12 @@
 		"json": 2
 	},
 	"project": {
-		"name": "0_Competition_A",
+		"name": "0_Competition_N",
 		"description": "Only For Competition",
 		"creationDate": "11/6/2026, 9:38:20 AM",
 		"platform": "V5",
 		"language": "cpp",
-		"slot": 2,
+		"slot": 1,
 		"sdkVersion": "V5_20240802_15_00_00",
 		"cpp": {
 			"includePath": [],

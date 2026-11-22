@@ -114,6 +114,8 @@ void vexcodeInit() {
 
   // keep the lift from dropping when released
   Lift.setStopping(hold);
+  // lift height 0 = where the lift is now, so start with the lift at the bottom
+  Lift.resetPosition();
   // keep the claw gripping when the button is released
   Claw.setStopping(hold);
   // keep the cascade locked at the end of each 90 degree step

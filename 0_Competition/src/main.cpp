@@ -22,15 +22,11 @@ competition Competition;
 const double leftRatio = 1.0;
 const double rightRatio = 1.0;
 
-// Heading hold while driving straight.
-const double headingKp = 1;
-const double maxCorrection = 8.0;
-
 // PID gains taken from pid (1).h: kP = 0.98, kD = 0.67, turn limited to 15%,
 // drive limited to 50%. That code computed D as (error change per 10 ms loop)
 // and drive error in cm; calculatePID() uses change per ms and drive error in
 // rotation-sensor degrees, so the gains are scaled below to behave the same.
-const double srcKp = 0.98;
+const double srcKp = 0.70;
 const double srcKd = 0.67;
 const double srcLoopMs = 10;
 const double turnMaxOutput = 15;
@@ -43,8 +39,14 @@ const bool enableAutoTestButton = true;
 // Intake speed while A (in) or Y (out) is held (percent).
 const double intakeSpeedPercent = 100;
 
-// Claw speed while L1 or L2 is held (percent). Raise it if too slow.
-const double clawSpeedPercent = 80;
+// Lift speed for L1/L2 and for liftTo() in autonomous (percent).
+const double liftSpeedPercent = 100;
+// liftTo() counts the lift as "there" when BOTH motors are this close
+// (degrees) to the target.
+const double liftToleranceDegrees = 5;
+
+// Claw top speed with the right stick pushed all the way (percent).
+const double clawSpeedPercent = 60;
 
 // Cascade speed for the automatic B step (percent). 100 = as fast as the
 // motor's cartridge allows. Lower it if the step overshoots its angle.
@@ -60,10 +62,6 @@ const double cascadeGearRatio = 1.0;
 // Joystick values below this are treated as 0 (stops drift when released).
 const int joystickDeadband = 5;
 
-// Absolute heading (degrees) the robot should hold. turnPID() sets it,
-// drivePID() keeps it while driving.
-double targetHeading = 0;
-
 // The old Drivetrain object is gone (drive is now two 3-motor groups), so
 // stopping the drive means stopping both sides.
 void stopDrive() {
@@ -72,7 +70,7 @@ void stopDrive() {
 }
 
 bool setupTurn(pid& controller, double targetAngle, double uncertainty = 2);
-bool setupDrive(pid& controller, double targetDistance, double targetHeading,
+bool setupDrive(pid& controller, double targetDistance,
                 double uncertainty_cm = 2.0);
 
 // Turn to an ABSOLUTE heading in degrees (0 = heading at autonomous start,
@@ -89,7 +87,6 @@ void turnPID(double angleDeg, uint32_t timeoutMs = 0) {
   turnCtrl.kd = srcKd * srcLoopMs;  // 6.7
   turnCtrl.maxOutput = turnMaxOutput;
 
-  targetHeading = angleDeg;
   uint32_t startMs = Brain.Timer.time();
   while (!setupTurn(turnCtrl, angleDeg, 1)) {
     if (Brain.Timer.time() - startMs > timeoutMs) break;
@@ -98,8 +95,8 @@ void turnPID(double angleDeg, uint32_t timeoutMs = 0) {
   stopDrive();
 }
 
-// Drive a RELATIVE distance in cm (negative = backward), holding the current
-// target heading. Blocks until settled or timeout.
+// Drive straight a RELATIVE distance in cm (negative = backward). Both sides
+// get the same speed (no heading correction). Blocks until settled or timeout.
 void drivePID(double distanceCm, uint32_t timeoutMs = 0) {
   if (timeoutMs == 0) {
     timeoutMs = 1500 + (uint32_t)(fabs(distanceCm) * 20); // ~20 ms per cm
@@ -111,15 +108,59 @@ void drivePID(double distanceCm, uint32_t timeoutMs = 0) {
   driveCtrl.kd = srcKd * srcLoopMs * cmPerDegree;       // ~0.297
   driveCtrl.maxOutput = driveMaxOutput;
 
+  // Show what this drive was asked to do (controller row 3), so you can check
+  // the robot is running the program you just downloaded.
+  Controller1.Screen.setCursor(3, 1);
+  Controller1.Screen.print("Drive %+6.1fcm     ", distanceCm);
+
   RotationSensor.resetPosition();
   double targetDeg = cm_to_degree(distanceCm);
   uint32_t startMs = Brain.Timer.time();
-  while (!setupDrive(driveCtrl, targetDeg, targetHeading, 1)) {
+  while (!setupDrive(driveCtrl, targetDeg, 1)) {
     if (Brain.Timer.time() - startMs > timeoutMs) break;
     wait(10, msec);
   }
   stopDrive();
 }
+
+// Autonomous: move the lift to a height in lift-motor degrees and hold there.
+//   0 = where the lift was when the program started (start it at the bottom).
+//   To find a height: raise the lift with L1, read "Lift:" on the controller.
+//   liftTo(300);         wait until the lift reaches 300, then continue
+//   liftTo(300, false);  start the lift and continue right away (e.g. drive
+//                        while it rises)
+//   liftTo(0);           back down to the bottom
+void liftTo(double liftDegrees, bool waitForIt = true,
+            uint32_t timeoutMs = 2000) {
+  // Send EACH lift motor to the target on its own, so both get there.
+  LiftMotorA.spinToPosition(liftDegrees, degrees, liftSpeedPercent,
+                            velocityUnits::pct, false);
+  LiftMotorB.spinToPosition(liftDegrees, degrees, liftSpeedPercent,
+                            velocityUnits::pct, false);
+  if (!waitForIt) return;
+
+  // Done only when BOTH motors are within liftToleranceDegrees of the target.
+  uint32_t startMs = Brain.Timer.time();
+  bool timedOut = false;
+  while (true) {
+    double errA = fabs(liftDegrees - LiftMotorA.position(degrees));
+    double errB = fabs(liftDegrees - LiftMotorB.position(degrees));
+    if (errA <= liftToleranceDegrees && errB <= liftToleranceDegrees) break;
+    if (Brain.Timer.time() - startMs > timeoutMs) {
+      timedOut = true;  // stuck: give up and hold, so auto can carry on
+      break;
+    }
+    wait(10, msec);
+  }
+  Lift.stop(hold);
+
+  // Controller row 3: target, where each motor ended up, "!" = ran out of time.
+  Controller1.Screen.setCursor(3, 1);
+  Controller1.Screen.print("L%4.0f A%4.0f B%4.0f%s", liftDegrees,
+                           LiftMotorA.position(degrees),
+                           LiftMotorB.position(degrees), timedOut ? "!" : " ");
+}
+
 
 /*---------------------------------------------------------------------------*/
 /*                          Pre-Autonomous Functions                         */
@@ -140,17 +181,15 @@ void pre_auton(void) {
 void autonomous(void) {
   // Heading 0 = the direction the robot faces when autonomous starts.
   InertialSensor.setRotation(0, degrees);
-  targetHeading = 0;
-
-  drivePID(20);
-  turnPID(-90);
-  drivePID(30);
+  wait(3000, msec);
+  liftTo(300);  // example: raise the lift to 300 degrees (see liftTo above)
   Piston.set(true);
+  drivePID(100);
 }
 
 /*---------------------------------------------------------------------------*/
 /*                              User Control Task                            */
-/*---------------------------------------------------------------------------*/
+/*------------------------ ---------------------------------------------------*/
 
 // ---- ONE-MOTOR TEST ---------------------------------------------------------
 // true: driver control spins ONLY testMotor with the left stick (up/down);
@@ -190,6 +229,7 @@ void usercontrol(void) {
   }
 
   // Cascade button state (see the cascade block in the loop).
+  bool clampR1WasPressed = false;   // R1 state last loop (to catch a new tap)
   bool cascadeBWasPressed = false;  // B state last loop (to catch a new tap)
   bool cascadeXSpinning = false;    // true while X is spinning it
   double cascadeTarget = CascadeMotor.position(degrees);
@@ -206,34 +246,40 @@ void usercontrol(void) {
     // Left stick up/down = forward/back, left stick left/right = turn.
     int forwardInput = Controller1.Axis3.position();
     int turnInput = Controller1.Axis4.position();
-    int liftInput = Controller1.Axis2.position();
+    int clawInput = Controller1.Axis2.position();
     if (abs(forwardInput) < joystickDeadband) forwardInput = 0;
     if (abs(turnInput) < joystickDeadband) turnInput = 0;
-    if (abs(liftInput) < joystickDeadband) liftInput = 0;
+    if (abs(clawInput) < joystickDeadband) clawInput = 0;
 
+    // Stick right = turn right: left side faster, right side slower.
     LeftDrive.spin(forward, forwardInput + turnInput, percent);
     RightDrive.spin(forward, forwardInput - turnInput, percent);
-    if (liftInput == 0) {
-      Lift.stop(hold);
-    } else {
-      Lift.spin(forward, liftInput, percent);
-    }
 
-    // Claw: hold L1 = forward, hold L2 = reverse. Released, it holds its grip.
+    // Lift: hold L1 = forward, hold L2 = reverse. Released, it holds in place.
     if (Controller1.ButtonL1.pressing()) {
-      Claw.spin(forward, clawSpeedPercent, percent);
+      Lift.spin(forward, liftSpeedPercent, percent);
     } else if (Controller1.ButtonL2.pressing()) {
-      Claw.spin(reverse, clawSpeedPercent, percent);
+      Lift.spin(reverse, liftSpeedPercent, percent);
     } else {
-      Claw.stop(hold);
+      Lift.stop(hold);
     }
 
-    // Pneumatic clamp (three-wire A): R1 = clamp, R2 = release.
-    // It stays where it was put until the other button is pressed.
-    if (Controller1.ButtonR1.pressing()) {
-      Piston.set(true);
-    } else if (Controller1.ButtonR2.pressing()) {
-      Piston.set(false);
+    // Claw: right stick up/down. Speed follows how far the stick is pushed,
+    // up to clawSpeedPercent. Released, it holds its grip.
+    if (clawInput == 0) {
+      Claw.stop(hold);
+    } else {
+      Claw.spin(forward, clawInput * clawSpeedPercent / 100, percent);
+    }
+
+    // Pneumatic clamp (three-wire A): each tap of R1 switches it
+    // clamp -> release -> clamp ... Holding R1 counts as one tap.
+    {
+      bool r1Now = Controller1.ButtonR1.pressing();
+      if (r1Now && !clampR1WasPressed) {
+        Piston.set(!Piston.value());
+      }
+      clampR1WasPressed = r1Now;
     }
 
     // Cascade:
@@ -316,7 +362,7 @@ bool setupTurn(pid& controller, double targetAngle, double uncertainty) {
   return false;
 }
 
-bool setupDrive(pid& controller, double targetDistance, double targetHeading,
+bool setupDrive(pid& controller, double targetDistance,
                 double uncertainty_cm) {
   double currentDistance = RotationSensor.position(degrees);
   double uncertainty_degree = cm_to_degree(uncertainty_cm);
@@ -329,17 +375,11 @@ bool setupDrive(pid& controller, double targetDistance, double targetHeading,
 
   double speed = calculatePID(controller, targetDistance, currentDistance);
 
-  double headingError = targetHeading - InertialSensor.rotation(degrees);
-  while (headingError > 180) headingError -= 360;
-  while (headingError < -180) headingError += 360;
-
-  double correction =
-      clampP(headingKp * headingError, -maxCorrection, maxCorrection);
-
-  // Apply each side's compensation to the combined drive and heading command.
-  double leftSpeed = clampP((speed + correction) * leftRatio,
+  // Straight: both sides get the same speed. leftRatio/rightRatio can trim
+  // one side if the robot still drifts.
+  double leftSpeed = clampP(speed * leftRatio,
                             -controller.maxOutput, controller.maxOutput);
-  double rightSpeed = clampP((speed - correction) * rightRatio,
+  double rightSpeed = clampP(speed * rightRatio,
                              -controller.maxOutput, controller.maxOutput);
 
   LeftDrive.spin(forward, leftSpeed, velocityUnits::pct);
