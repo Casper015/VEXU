@@ -4,12 +4,17 @@ using namespace vex;
 
 // Change device ports here when the wiring changes.
 namespace RobotPorts {
-const int liftMotorA = PORT8;
-const int liftMotorB = PORT18;
-const int leftMotorA = PORT20;
+const int liftMotorA = PORT8; //red
+const int liftMotorB = PORT2;
+const int leftMotorA = PORT17;
 const int leftMotorB = PORT9;
-const int rightMotorA = PORT2;
-const int rightMotorB = PORT11;
+const int leftMotorC = POR21;
+
+const int rightMotorA = PORT12;
+const int rightMotorB = PORT15;
+const int rightMotorC = PORT4;
+
+const int carousle
 const int inertial = PORT6;
 const int rotation = PORT19;
 }
@@ -22,7 +27,7 @@ controller Controller1 = controller();
 // Lift: 2 motors in one group. The two motors face each other,
 // so one is reversed. If they fight each other, flip ONE true/false; if the
 // whole lift goes the wrong way, flip BOTH.
-motor LiftMotorA = motor(RobotPorts::liftMotorA, ratio36_1, true); // Lift Left
+motor LiftMotorA = motor(RobotPorts::liftMotorA, ratio36_1, false); // Lift Left
 motor LiftMotorB = motor(RobotPorts::liftMotorB, ratio36_1, false); // Lift Right
 motor_group Lift = motor_group(LiftMotorA, LiftMotorB);
 
