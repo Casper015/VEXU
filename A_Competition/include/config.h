@@ -8,38 +8,49 @@
 namespace Config {
 
 // ---- Driver control ----
-// Joystick values below this are treated as 0 (stops drift when released).
-constexpr int joystickDeadband = 5;
 // Full right-stick deflection runs the lift at this speed (percent).
 constexpr double liftMaxPercent = 90;
-// Intake speed while R1 (in) or R2 (out) is held (percent).
+// Intake speed while A (forward) or Y (reverse) is held (percent).
 constexpr double intakeSpeedPercent = 100;
 // Claw speed while L1 (close) or L2 (open) is held (percent).
 constexpr double clawSpeedPercent = 50;
-// Cascade (the rotating part in the middle) speed while X (forward) or
-// B (reverse) is held (percent).
+// Cascade (the rotating part in the middle) speed while B (forward) or
+// X (reverse) is held (percent).
 constexpr double cascadeSpeedPercent = 50;
 // How often the driver loop runs (ms).
 constexpr int driverLoopMs = 20;
 
-// ---- Driver control: how the drive feels ----
+// ---- Driver control: how the sticks feel (the math is in joystick.cpp) ----
+// STICK SHAPING IS CURRENTLY OFF: curves and acceleration limits are 0, so the
+// sticks drive the motors directly. To turn it back on, restore the values
+// noted as "was ..." on the lines below.
+// Deadband: stick readings inside +-this are treated as 0, so a stick that
+// does not rest exactly at centre cannot make the robot creep. Raise it if
+// the robot moves with hands off the stick.
+constexpr double joystickDeadband = 5;   // forward/back and lift
+// Turning shares the left stick with forward/back, and pushing straight
+// forward always leaks a little sideways. A bigger deadband here keeps the
+// robot driving straight. Raise it if the robot wanders when driving
+// forward, lower it if small turns feel dead.
+constexpr double turnDeadband = 5;   // shaping off; was 10
 // Stick curve, 0 to 1. 0 = straight line (stick 50% -> speed 50%).
 // Higher = gentler around the centre for fine moves, full stick is still
 // full speed. At 1, stick 50% gives only 12.5% speed.
-constexpr double forwardCurve = 0.3;
-constexpr double turnCurve = 0.5;
+constexpr double forwardCurve = 0;   // shaping off; was 0.3
+constexpr double turnCurve = 0;      // shaping off; was 0.5
+constexpr double liftCurve = 0;      // shaping off; was 0.3
 // Top speed at full stick (percent). Lower turnMaxPercent for calmer turns.
 constexpr double forwardMaxPercent = 100;
 constexpr double turnMaxPercent = 100;
 // Acceleration limit: how fast the command may rise, in percent per second.
 // 400 means 0 -> 100% takes 0.25 s. 0 = no limit (instant).
-constexpr double forwardAccelPerSec = 400;
+constexpr double forwardAccelPerSec = 0;  // shaping off; was 400
 constexpr double turnAccelPerSec = 0;
 // Deceleration limit: how fast the command may fall back toward 0.
 // 0 = no limit, the robot stops as soon as the stick is released.
 constexpr double forwardDecelPerSec = 0;
 constexpr double turnDecelPerSec = 0;
-// To get the old behaviour back: both curves 0, all four limits 0.
+// To get the raw, unshaped feel back: all three curves 0, all four limits 0.
 
 // ---- Testing aids (check these before a real competition) ----
 // Up button in driver control runs autonomous() once; Down cancels it.
@@ -49,11 +60,11 @@ constexpr bool enableAutoTestButton = true;
 constexpr bool showPortCheck = true;
 
 // Show the live Optical Sensor readings and the cup decision on the Brain.
-constexpr bool showCupDebug = true;
+constexpr bool showCupDebug = false;  // turn on when calibrating the cup orienter
 
 // ---- Cup orienter (Optical Sensor + cascade motor) ----
-// Master switch. false = the A button and orientCup() do nothing.
-constexpr bool enableCupOrienter = true;
+// Master switch. false = the Right arrow and orientCup() do nothing.
+constexpr bool enableCupOrienter = false;  // off until the hardware is ready
 
 // Sensor settings.
 constexpr double cupLedPercent = 100;    // LED power, 0-100
@@ -112,14 +123,14 @@ constexpr double maxCorrection = 8.0;  // percent
 // Error must stay inside the tolerance for the settle time.
 constexpr double turnToleranceDeg = 1;
 constexpr uint32_t turnSettleMs = 50;
-constexpr double driveToleranceCm = 1;
+constexpr double driveToleranceMm = 10;
 constexpr uint32_t driveSettleMs = 150;
 
 // ---- Autonomous: timeouts (a move gives up after base + per-unit time) ----
 constexpr uint32_t turnTimeoutBaseMs = 1000;
 constexpr double turnTimeoutMsPerDeg = 25;
 constexpr uint32_t driveTimeoutBaseMs = 1500;
-constexpr double driveTimeoutMsPerCm = 20;
+constexpr double driveTimeoutMsPerMm = 2;
 
 }  // namespace Config
 

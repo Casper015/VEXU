@@ -25,9 +25,10 @@ const int intakeMotorB = PORT16;
 const int clawMotorA = PORT20;
 const int clawMotorB = PORT5;
 
-const int Piston= H;
+// The piston is on three-wire port H. Three-wire ports are not numbers, so
+// its port is set where Piston is defined, just below the Brain.
 
-const int optical = PORT16;
+const int optical = PORT14;  // PLACEHOLDER: was 16, which is intakeMotorB
 const int vision = PORT19;
 const int inertial = PORT13;
 const int rotation = PORT11;
@@ -38,12 +39,16 @@ const int rotation = PORT11;
 brain  Brain;
 controller Controller1 = controller();
 
+// Piston: three-wire port H on the side of the Brain.
+// Piston.set(true) extends it, Piston.set(false) retracts it.
+digital_out Piston = digital_out(Brain.ThreeWirePort.H);
+
 // VEXcode device constructors
 // Lift: 2 motors in one group. The two motors face each other,
 // so one is reversed. If they fight each other, flip ONE true/false; if the
 // whole lift goes the wrong way, flip BOTH.
 motor LiftMotorA = motor(RobotPorts::liftMotorA, ratio36_1, true); // Lift Left
-motor LiftMotorB = motor(RobotPorts::liftMotorB, ratio36_1, false); // Lift Right
+motor LiftMotorB = motor(RobotPorts::liftMotorB, ratio36_1, true); // Lift Right
 motor_group Lift = motor_group(LiftMotorA, LiftMotorB);
 
 // Drive: 3 motors per side. All three on a side must turn the wheels the same

@@ -32,6 +32,9 @@ extern motor ClawMotorA;
 extern motor ClawMotorB;
 extern motor_group Claw;
 
+// Piston on three-wire port H
+extern digital_out Piston;
+
 // Cup orienter
 extern optical OpticalSensor;
 extern motor CascadeMotor;

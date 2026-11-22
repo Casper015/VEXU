@@ -40,12 +40,36 @@ const double driveMaxOutput = 50;
 // Set to false before a real competition.
 const bool enableAutoTestButton = true;
 
+// Intake speed while A (in) or Y (out) is held (percent).
+const double intakeSpeedPercent = 100;
+
+// Claw speed while L1 or L2 is held (percent). Raise it if too slow.
+const double clawSpeedPercent = 80;
+
+// Cascade speed for the automatic B step (percent). 100 = as fast as the
+// motor's cartridge allows. Lower it if the step overshoots its angle.
+const double cascadeStepSpeedPercent = 100;
+// Cascade speed while X is held (percent). Slower, for fine control.
+const double cascadeManualSpeedPercent = 40;
+// One tap of B turns the cascade this many degrees.
+const double cascadeStepDegrees = 180;
+// Motor turns per one turn of the cascade. 1.0 = motor drives it directly.
+// With gears, e.g. motor 12-tooth driving a 36-tooth gear, use 36.0 / 12.0.
+const double cascadeGearRatio = 1.0;
+
 // Joystick values below this are treated as 0 (stops drift when released).
 const int joystickDeadband = 5;
 
 // Absolute heading (degrees) the robot should hold. turnPID() sets it,
 // drivePID() keeps it while driving.
 double targetHeading = 0;
+
+// The old Drivetrain object is gone (drive is now two 3-motor groups), so
+// stopping the drive means stopping both sides.
+void stopDrive() {
+  LeftDrive.stop(brake);
+  RightDrive.stop(brake);
+}
 
 bool setupTurn(pid& controller, double targetAngle, double uncertainty = 2);
 bool setupDrive(pid& controller, double targetDistance, double targetHeading,
@@ -56,7 +80,7 @@ bool setupDrive(pid& controller, double targetDistance, double targetHeading,
 void turnPID(double angleDeg, uint32_t timeoutMs = 0) {
   if (timeoutMs == 0) {
     // 15% max turn speed is slow, so allow ~25 ms per degree of turning.
-    double turnDeg = fabs(angleDeg - TestInertial.rotation(degrees));
+    double turnDeg = fabs(angleDeg - InertialSensor.rotation(degrees));
     timeoutMs = 1000 + (uint32_t)(turnDeg * 25);
   }
 
@@ -71,7 +95,7 @@ void turnPID(double angleDeg, uint32_t timeoutMs = 0) {
     if (Brain.Timer.time() - startMs > timeoutMs) break;
     wait(10, msec);
   }
-  Drivetrain.stop(brake);
+  stopDrive();
 }
 
 // Drive a RELATIVE distance in cm (negative = backward), holding the current
@@ -87,14 +111,14 @@ void drivePID(double distanceCm, uint32_t timeoutMs = 0) {
   driveCtrl.kd = srcKd * srcLoopMs * cmPerDegree;       // ~0.297
   driveCtrl.maxOutput = driveMaxOutput;
 
-  Rotation2.resetPosition();
+  RotationSensor.resetPosition();
   double targetDeg = cm_to_degree(distanceCm);
   uint32_t startMs = Brain.Timer.time();
   while (!setupDrive(driveCtrl, targetDeg, targetHeading, 1)) {
     if (Brain.Timer.time() - startMs > timeoutMs) break;
     wait(10, msec);
   }
-  Drivetrain.stop(brake);
+  stopDrive();
 }
 
 /*---------------------------------------------------------------------------*/
@@ -104,7 +128,7 @@ void drivePID(double distanceCm, uint32_t timeoutMs = 0) {
 void pre_auton(void) {
   // Calibrate sensors and start the screen thread.
   vexcodeInit();
-  while (TestInertial.isCalibrating()) {
+  while (InertialSensor.isCalibrating()) {
     wait(20, msec);
   }
 }
@@ -115,29 +139,65 @@ void pre_auton(void) {
 
 void autonomous(void) {
   // Heading 0 = the direction the robot faces when autonomous starts.
-  TestInertial.setRotation(0, degrees);
+  InertialSensor.setRotation(0, degrees);
   targetHeading = 0;
 
-  drivePID(25);
-  turnPID(90);
-  drivePID(10);
-  drivePID(-10);
+  drivePID(20);
   turnPID(-90);
-  drivePID(10);
-  turnPID(90);
-  turnPID(-90);
-  drivePID(25);
+  drivePID(30);
+  Piston.set(true);
 }
 
 /*---------------------------------------------------------------------------*/
 /*                              User Control Task                            */
 /*---------------------------------------------------------------------------*/
 
+// ---- ONE-MOTOR TEST ---------------------------------------------------------
+// true: driver control spins ONLY testMotor with the left stick (up/down);
+// every other motor stays off. Set to false to drive normally again.
+// To test the next motor, change testMotor and testMotorName below.
+const bool motorTestMode = false;
+motor& testMotor = LeftMotorC;
+const char* testMotorName = "LeftMotorC";
+
+void runMotorTest() {
+  int input = Controller1.Axis3.position();
+  if (abs(input) < joystickDeadband) input = 0;
+
+  if (input == 0) {
+    testMotor.stop(coast);
+  } else {
+    testMotor.spin(forward, input, percent);
+  }
+
+  // Row 1 belongs to controller_screen(), so use rows 2 and 3.
+  Controller1.Screen.setCursor(2, 1);
+  Controller1.Screen.print("%-10s P%-2d %-4s ", testMotorName,
+                           (int)testMotor.index() + 1,
+                           testMotor.installed() ? "OK" : "NONE");
+  Controller1.Screen.setCursor(3, 1);
+  Controller1.Screen.print("cmd%4d real%4d   ", input,
+                           (int)testMotor.velocity(percent));
+}
+
 void usercontrol(void) {
+  if (motorTestMode) {
+    Controller1.Screen.clearScreen();
+    while (true) {
+      runMotorTest();
+      wait(20, msec);
+    }
+  }
+
+  // Cascade button state (see the cascade block in the loop).
+  bool cascadeBWasPressed = false;  // B state last loop (to catch a new tap)
+  bool cascadeXSpinning = false;    // true while X is spinning it
+  double cascadeTarget = CascadeMotor.position(degrees);
+
   while (true) {
     // Up button: run the autonomous route once (joystick is ignored meanwhile).
     if (enableAutoTestButton && Controller1.ButtonUp.pressing()) {
-      Drivetrain.stop(brake);
+      stopDrive();
       autonomous();
       waitUntil(!Controller1.ButtonUp.pressing()); // no repeat if still held
       continue;
@@ -151,15 +211,70 @@ void usercontrol(void) {
     if (abs(turnInput) < joystickDeadband) turnInput = 0;
     if (abs(liftInput) < joystickDeadband) liftInput = 0;
 
-    LeftDriveSmart.spin(forward, forwardInput + turnInput, percent);
-    RightDriveSmart.spin(forward, forwardInput - turnInput, percent);
-
-    if (liftInput > 0) {
-      Lift.spin(forward, liftInput, percent);
-    } else if (liftInput < 0) {
-      Lift.spin(reverse, -liftInput, percent);
-    } else {
+    LeftDrive.spin(forward, forwardInput + turnInput, percent);
+    RightDrive.spin(forward, forwardInput - turnInput, percent);
+    if (liftInput == 0) {
       Lift.stop(hold);
+    } else {
+      Lift.spin(forward, liftInput, percent);
+    }
+
+    // Claw: hold L1 = forward, hold L2 = reverse. Released, it holds its grip.
+    if (Controller1.ButtonL1.pressing()) {
+      Claw.spin(forward, clawSpeedPercent, percent);
+    } else if (Controller1.ButtonL2.pressing()) {
+      Claw.spin(reverse, clawSpeedPercent, percent);
+    } else {
+      Claw.stop(hold);
+    }
+
+    // Pneumatic clamp (three-wire A): R1 = clamp, R2 = release.
+    // It stays where it was put until the other button is pressed.
+    if (Controller1.ButtonR1.pressing()) {
+      Piston.set(true);
+    } else if (Controller1.ButtonR2.pressing()) {
+      Piston.set(false);
+    }
+
+    // Cascade:
+    //   B tap  -> turn forward exactly cascadeStepDegrees, fast, and stop.
+    //             Each press adds one more step.
+    //   X hold -> spin the opposite way (reverse), slowly, until released.
+    {
+      bool bNow = Controller1.ButtonB.pressing();
+      bool xNow = Controller1.ButtonX.pressing();
+
+      if (xNow) {
+        if (!cascadeXSpinning) {
+          CascadeMotor.spin(reverse, cascadeManualSpeedPercent, percent);
+          cascadeXSpinning = true;
+        }
+      } else {
+        if (cascadeXSpinning) {
+          // X released: stop here, and count the next B step from here.
+          CascadeMotor.stop(hold);
+          cascadeTarget = CascadeMotor.position(degrees);
+          cascadeXSpinning = false;
+        }
+        if (bNow && !cascadeBWasPressed) {
+          // Fresh B press (not held from the last loop): one step forward.
+          cascadeTarget += cascadeStepDegrees * cascadeGearRatio;
+          CascadeMotor.spinToPosition(cascadeTarget, degrees,
+                                      cascadeStepSpeedPercent, velocityUnits::pct,
+                                      false);
+        }
+      }
+      cascadeBWasPressed = bNow;
+    }
+
+    // Intake: hold A to pull in, hold Y to push out (clear a jam),
+    // release to stop.
+    if (Controller1.ButtonA.pressing()) {
+      Intake.spin(forward, intakeSpeedPercent, percent);
+    } else if (Controller1.ButtonY.pressing()) {
+      Intake.spin(reverse, intakeSpeedPercent, percent);
+    } else {
+      Intake.stop(coast);
     }
 
     wait(20, msec);
@@ -185,34 +300,36 @@ int main() {
 /*---------------------------------------------------------------------------*/
 
 bool setupTurn(pid& controller, double targetAngle, double uncertainty) {
-  double currentAngle = TestInertial.rotation(degrees);
+  double currentAngle = InertialSensor.rotation(degrees);
   double error = targetAngle - currentAngle;
 
   if (hasSettled(controller, error, uncertainty, 50)) {
-    Drivetrain.stop(brake);
+    stopDrive();
     return true;
   }
 
   double speed = calculatePID(controller, targetAngle, currentAngle);
-  Drivetrain.turn(right, speed, velocityUnits::pct);
+  // Turn in place: positive speed = turn right.
+  LeftDrive.spin(forward, speed, velocityUnits::pct);
+  RightDrive.spin(forward, -speed, velocityUnits::pct);
 
   return false;
 }
 
 bool setupDrive(pid& controller, double targetDistance, double targetHeading,
                 double uncertainty_cm) {
-  double currentDistance = Rotation2.position(degrees);
+  double currentDistance = RotationSensor.position(degrees);
   double uncertainty_degree = cm_to_degree(uncertainty_cm);
   double distanceError = targetDistance - currentDistance;
 
   if (hasSettled(controller, distanceError, uncertainty_degree, 150)) {
-    Drivetrain.stop(brake);
+    stopDrive();
     return true;
   }
 
   double speed = calculatePID(controller, targetDistance, currentDistance);
 
-  double headingError = targetHeading - TestInertial.rotation(degrees);
+  double headingError = targetHeading - InertialSensor.rotation(degrees);
   while (headingError > 180) headingError -= 360;
   while (headingError < -180) headingError += 360;
 
@@ -225,8 +342,8 @@ bool setupDrive(pid& controller, double targetDistance, double targetHeading,
   double rightSpeed = clampP((speed - correction) * rightRatio,
                              -controller.maxOutput, controller.maxOutput);
 
-  LeftDriveSmart.spin(forward, leftSpeed, velocityUnits::pct);
-  RightDriveSmart.spin(forward, rightSpeed, velocityUnits::pct);
+  LeftDrive.spin(forward, leftSpeed, velocityUnits::pct);
+  RightDrive.spin(forward, rightSpeed, velocityUnits::pct);
 
   return false;
 }

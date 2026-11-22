@@ -4,21 +4,17 @@ using namespace vex;
 
 // ---------------------------------------------------------------------------
 // Routes. Add more functions like this one and pick which one autonomous()
-// calls. drivePID() is in cm (relative), turnPID() is an absolute heading in
-// degrees where 0 is the way the robot faced when autonomous started.
+// calls. drivePID() is in MILLIMETRES (relative, 1000 = 1 m). turnPID() is an
+// absolute heading in degrees, where 0 is the way the robot faced when
+// autonomous started.
 // ---------------------------------------------------------------------------
 
-static void testRoute() {
-  drivePID(25);
-  turnPID(90);
-  drivePID(10);
-  drivePID(-10);
-  turnPID(-90);
-  drivePID(10);
-  turnPID(90);
-  turnPID(-90);
-  drivePID(25);
-}
+  static void testRoute() {
+    drivePID(200);
+    turnPID(-90);
+    drivePID(300);
+    Piston.set(true);
+  }
 
 void autonomous(void) {
   // If the field starts autonomous before the inertial sensor has finished

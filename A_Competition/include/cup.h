@@ -24,7 +24,7 @@ CupSide readCupSide();
 // Read the cup and turn it if it is the wrong way round. Blocks while it
 // works (up to detect timeout + flip timeout). Returns true if the cup ends
 // up the right way round, false if it could not decide or could not fix it.
-// Safe to call from autonomous. In driver control it runs from the A button.
+// Safe to call from autonomous. In driver control it runs from the Right arrow.
 bool orientCup();
 
 // True while orientCup() is turning the cascade. Driver control must leave

@@ -8,10 +8,10 @@
 // timeoutMs = 0 picks a timeout from the size of the turn.
 void turnPID(double angleDeg, uint32_t timeoutMs = 0);
 
-// Drive a RELATIVE distance in cm (negative = backward), holding the current
+// Drive a RELATIVE distance in MILLIMETRES (negative = backward), holding the current
 // target heading. Blocks until settled or timeout.
 // timeoutMs = 0 picks a timeout from the distance.
-void drivePID(double distanceCm, uint32_t timeoutMs = 0);
+void drivePID(double distanceMm, uint32_t timeoutMs = 0);
 
 // Brake both sides of the drive.
 void stopDrive();

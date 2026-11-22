@@ -53,6 +53,32 @@ static void motor_cell(int which) {
                      (int)m.velocity(velocityUnits::pct));
 }
 
+// The competition object lives in main.cpp.
+extern competition Competition;
+
+// Status line: what mode the Brain thinks it is in, whether the driver loop
+// is running, and whether the sensors and the controller are there.
+//   mode   DISABLED / AUTON / DRIVER  (motors only move when not DISABLED)
+//   loops  driver-loop counter; it must keep climbing in DRIVER mode
+//   IMU    OK / CAL (still calibrating) / -- (not found on its port)
+//   ROT    OK / -- (rotation sensor not found on its port)
+static void status_row(int row) {
+  const char* mode = "DISABLED";
+  if (Competition.isEnabled()) {
+    mode = Competition.isAutonomous() ? "AUTON" : "DRIVER";
+  }
+  const char* field =
+      (Competition.isFieldControl() || Competition.isCompetitionSwitch())
+          ? "field" : "no-field";
+  const char* imu = !InertialSensor.installed() ? "--"
+                    : (InertialSensor.isCalibrating() ? "CAL" : "OK");
+  const char* rot = RotationSensor.installed() ? "OK" : "--";
+
+  Brain.Screen.setCursor(row, 1);
+  Brain.Screen.print("%-8s %-8s loops %6lu IMU %-3s ROT %-2s   ", mode, field,
+                     (unsigned long)driverLoopCount, imu, rot);
+}
+
 // PORT CHECK screen: work one stick or button at a time and watch which cell
 // shows a speed. The cell that moves tells you which port is really driven.
 void brain_screen() {
@@ -64,4 +90,5 @@ void brain_screen() {
   for (int i = 0; i < motorCount; i++) {
     motor_cell(i);
   }
+  status_row(9);
 }

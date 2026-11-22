@@ -21,6 +21,9 @@ using namespace vex;
 // A global instance of competition
 competition Competition;
 
+// See controller.h: proof on the Brain screen that driver control is running.
+volatile unsigned long driverLoopCount = 0;
+
 /*---------------------------------------------------------------------------*/
 /*                          Pre-Autonomous Functions                         */
 /*---------------------------------------------------------------------------*/
@@ -28,7 +31,7 @@ competition Competition;
 void pre_auton(void) {
   // Calibrate sensors and start the screen thread.
   vexcodeInit();
-  // Set up the cup orienter (Optical Sensor + cascade motor, A button).
+  // Set up the cup orienter (Optical Sensor + cascade motor, Right arrow).
   cupInit();
   while (InertialSensor.isCalibrating()) {
     wait(20, msec);
@@ -39,26 +42,22 @@ void pre_auton(void) {
 /*                              User Control Task                            */
 /*---------------------------------------------------------------------------*/
 
-// Joystick value with the deadband applied.
-static int stickValue(int raw) {
-  return abs(raw) < Config::joystickDeadband ? 0 : raw;
-}
-
 // Drive commands after the acceleration limit, remembered between loops.
 static double forwardCmd = 0;
 static double turnCmd = 0;
 
 // Left stick up/down = forward/back, left stick left/right = turn.
-// The feel (curve, top speed, acceleration) is set in config.h.
+// The feel (deadband, curve, top speed, acceleration) is set in config.h and
+// the math is in joystick.cpp.
 static void driveFromSticks() {
   const double loopSec = Config::driverLoopMs / 1000.0;
 
   double forwardTarget =
-      curveStick(stickValue(Controller1.Axis3.position()), Config::forwardCurve) *
-      Config::forwardMaxPercent / 100.0;
+      shapeStick(Controller1.Axis3.position(), Config::joystickDeadband,
+                 Config::forwardCurve, Config::forwardMaxPercent);
   double turnTarget =
-      curveStick(stickValue(Controller1.Axis4.position()), Config::turnCurve) *
-      Config::turnMaxPercent / 100.0;
+      shapeStick(Controller1.Axis4.position(), Config::turnDeadband,
+                 Config::turnCurve, Config::turnMaxPercent);
 
   forwardCmd = slewToward(forwardCmd, forwardTarget,
                           Config::forwardAccelPerSec * loopSec,
@@ -67,8 +66,12 @@ static void driveFromSticks() {
                        Config::turnAccelPerSec * loopSec,
                        Config::turnDecelPerSec * loopSec);
 
-  LeftDrive.spin(forward, forwardCmd + turnCmd, percent);
-  RightDrive.spin(forward, forwardCmd - turnCmd, percent);
+  double leftCmd = 0;
+  double rightCmd = 0;
+  mixArcade(forwardCmd, turnCmd, leftCmd, rightCmd);
+
+  LeftDrive.spin(forward, leftCmd, percent);
+  RightDrive.spin(forward, rightCmd, percent);
 }
 
 // TEST ONLY: run the autonomous route once from driver control.
@@ -108,6 +111,8 @@ void usercontrol(void) {
   turnCmd = 0;
 
   while (true) {
+    driverLoopCount = driverLoopCount + 1;
+
     if (Config::enableAutoTestButton && Controller1.ButtonUp.pressing()) {
       runAutoTest();
       continue;
@@ -116,26 +121,28 @@ void usercontrol(void) {
     driveFromSticks();
 
     // Right stick up/down = lift up/down; released = hold position.
-    int liftInput = stickValue(Controller1.Axis2.position());
-    if (liftInput != 0) {
-      Lift.spin(forward, liftInput * Config::liftMaxPercent / 100.0, percent);
+    double liftCmd =
+        shapeStick(Controller1.Axis2.position(), Config::joystickDeadband,
+                   Config::liftCurve, Config::liftMaxPercent);
+    if (liftCmd != 0) {
+      Lift.spin(forward, liftCmd, percent);
     } else {
       Lift.stop(hold);
     }
 
-    // R1 = intake in, R2 = intake out.
-    holdToRun(Intake, Controller1.ButtonR1.pressing(),
-              Controller1.ButtonR2.pressing(), Config::intakeSpeedPercent, coast);
+    // A = intake forward, Y = intake reverse.
+    holdToRun(Intake, Controller1.ButtonA.pressing(),
+              Controller1.ButtonY.pressing(), Config::intakeSpeedPercent, coast);
 
     // L1 = claw close, L2 = claw open; released = hold the grip.
     holdToRun(Claw, Controller1.ButtonL1.pressing(),
               Controller1.ButtonL2.pressing(), Config::clawSpeedPercent, hold);
 
-    // X = cascade forward, B = cascade reverse; released = hold position.
-    // Skipped while the cup orienter (A button) is turning it.
+    // B = cascade forward, X = cascade reverse; released = hold position.
+    // Skipped while the cup orienter (Right arrow) is turning it.
     if (!cupBusy()) {
-      holdToRun(CascadeMotor, Controller1.ButtonX.pressing(),
-                Controller1.ButtonB.pressing(), Config::cascadeSpeedPercent, hold);
+      holdToRun(CascadeMotor, Controller1.ButtonB.pressing(),
+                Controller1.ButtonX.pressing(), Config::cascadeSpeedPercent, hold);
     }
 
     wait(Config::driverLoopMs, msec);

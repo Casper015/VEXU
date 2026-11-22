@@ -11,6 +11,7 @@
 #include "robot-config.h"
 #include "pid.h"
 #include "utils.h"
+#include "joystick.h"
 #include "drive.h"
 #include "cup.h"
 #include "auton.h"

@@ -122,7 +122,7 @@ bool orientCup() {
   return ok;
 }
 
-// A button in driver control. Button events run in their own thread, so the
+// Right arrow in driver control. Button events run in their own thread, so the
 // drive loop keeps running while the table turns.
 static void onCupButton() {
   if (!orientCup()) {
@@ -135,7 +135,7 @@ void cupInit() {
 
   applySensorSettings();
   CascadeMotor.setStopping(hold);
-  Controller1.ButtonA.pressed(onCupButton);
+  Controller1.ButtonRight.pressed(onCupButton);
 }
 
 /*---------------------------------------------------------------------------*/

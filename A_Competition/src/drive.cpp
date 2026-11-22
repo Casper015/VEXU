@@ -54,7 +54,7 @@ static bool driveStep(pid& ctrl, double targetDistance) {
   double currentDistance = RotationSensor.position(degrees);
   double distanceError = targetDistance - currentDistance;
 
-  if (hasSettled(ctrl, distanceError, cm_to_degree(Config::driveToleranceCm),
+  if (hasSettled(ctrl, distanceError, cm_to_degree(Config::driveToleranceMm / 10.0),
                  Config::driveSettleMs)) {
     stopDrive();
     return true;
@@ -105,12 +105,12 @@ void turnPID(double angleDeg, uint32_t timeoutMs) {
   stopDrive();
 }
 
-void drivePID(double distanceCm, uint32_t timeoutMs) {
+void drivePID(double distanceMm, uint32_t timeoutMs) {
   if (aborted) return;
 
   if (timeoutMs == 0) {
     timeoutMs = Config::driveTimeoutBaseMs +
-                (uint32_t)(fabs(distanceCm) * Config::driveTimeoutMsPerCm);
+                (uint32_t)(fabs(distanceMm) * Config::driveTimeoutMsPerMm);
   }
 
   pid driveCtrl{};
@@ -120,7 +120,8 @@ void drivePID(double distanceCm, uint32_t timeoutMs) {
   driveCtrl.maxOutput = Config::driveMaxOutput;
 
   RotationSensor.resetPosition();
-  double targetDeg = cm_to_degree(distanceCm);
+  // The PID works in rotation-sensor degrees; 10 mm = 1 cm.
+  double targetDeg = cm_to_degree(distanceMm / 10.0);
   uint32_t startMs = Brain.Timer.time();
   while (!driveStep(driveCtrl, targetDeg)) {
     if (abortRequested()) break;

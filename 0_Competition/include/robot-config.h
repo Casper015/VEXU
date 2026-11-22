@@ -6,22 +6,38 @@ extern brain Brain;
 extern controller Controller1;
 
 // VEXcode devices
-extern drivetrain Drivetrain;
 extern motor LeftMotorA;
 extern motor LeftMotorB;
+extern motor LeftMotorC;
 extern motor RightMotorA;
 extern motor RightMotorB;
-extern motor_group LeftDriveSmart;
-extern motor_group RightDriveSmart;
+extern motor RightMotorC;
+extern motor_group LeftDrive;
+extern motor_group RightDrive;
 
-extern inertial TestInertial;
-extern rotation Rotation2;
+extern inertial InertialSensor;             // heading
+extern rotation RotationSensor;   // distance (rotation sensor on the tracking wheel)
 // extern vision Vision1;  // vision sensor not installed yet
 
 
 extern motor LiftMotorA;
 extern motor LiftMotorB;
 extern motor_group Lift;
+
+extern motor IntakeMotorA;
+extern motor IntakeMotorB;
+extern motor_group Intake;
+
+extern motor ClawMotorA;
+extern motor ClawMotorB;
+extern motor_group Claw;
+
+// Piston on three-wire port A
+extern digital_out Piston;
+
+// Cup orienter
+extern optical OpticalSensor;
+extern motor CascadeMotor;
 
 
 /**
